@@ -386,18 +386,22 @@ with st.sidebar:
 
 st.sidebar.markdown("---")
 
+# DEBUG SECTION - Shows username and admin status
+st.sidebar.write("🔧 DEBUG INFO:")
+st.sidebar.write(f"Usuario actual: **{st.session_state.username}**")
+st.sidebar.write(f"Username == 'admin'? **{st.session_state.username == 'admin'}**")
+st.sidebar.write(f"Tipo: **{type(st.session_state.username)}**")
+
 # Navigation menu - add Admin page only for admin user
 pages = ["🏠 בית", "📤 העלאה", "❓ שאלות", "⚖️ השוואה", "📜 היסטוריה"]
 
-# DEBUG - muestra el username
-st.sidebar.write(f"DEBUG: Usuario = '{st.session_state.username}'")
-st.sidebar.write(f"DEBUG: Es admin? {st.session_state.username == 'admin'}")
-
 if st.session_state.username == "admin":
     pages.append("👑 ניהול")
-    st.sidebar.success("✅ Botón admin agregado")
+    st.sidebar.success("✅ Usuario admin detectado - botón agregado")
 else:
-    st.sidebar.warning(f"❌ No es admin: '{st.session_state.username}'")
+    st.sidebar.warning(f"⚠️ No es admin (usuario: '{st.session_state.username}')")
+
+st.sidebar.write(f"Páginas disponibles: {len(pages)}")
 
 for page in pages:
     if st.sidebar.button(page, use_container_width=True, key=f"nav_{page}"):
