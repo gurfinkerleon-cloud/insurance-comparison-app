@@ -8,7 +8,6 @@ import uuid
 import json
 import shutil
 import re
-import hashlib
 
 try:
     import pdfplumber
@@ -29,13 +28,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-if 'username' not in st.session_state:
-    st.session_state.username = None
-if 'user_id' not in st.session_state:
-    st.session_state.user_id = None
 if 'page' not in st.session_state:
     st.session_state.page = "🏠 בית"
 if 'current_investigation_id' not in st.session_state:
@@ -45,10 +37,6 @@ COMPANIES = ["הראל", "מגדל", "כלל", "מנורה", "הפניקס", "א
 UPLOAD_DIR = "policy_uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-def hash_password(password):
-    """Hash password using SHA256"""
-    return hashlib.sha256(password.encode()).hexdigest()
-
 class Database:
     def __init__(self):
         self.conn = sqlite3.connect("insurance.db", check_same_thread=False)
@@ -57,112 +45,46 @@ class Database:
     
     def create_tables(self):
         cur = self.conn.cursor()
-        
-        # Users table
-        cur.execute("""CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
-        
-        # Investigations (now with user_id)
         cur.execute("""CREATE TABLE IF NOT EXISTS investigations (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            client_name TEXT NOT NULL,
-            description TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)""")
-        
+            id TEXT PRIMARY KEY, client_name TEXT NOT NULL, description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
         cur.execute("""CREATE TABLE IF NOT EXISTS policies (
-            id TEXT PRIMARY KEY,
-            investigation_id TEXT NOT NULL,
-            company TEXT,
-            file_name TEXT NOT NULL,
-            custom_name TEXT,
-            file_path TEXT,
-            total_pages INTEGER,
+            id TEXT PRIMARY KEY, investigation_id TEXT NOT NULL, company TEXT,
+            file_name TEXT NOT NULL, custom_name TEXT, file_path TEXT, total_pages INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (investigation_id) REFERENCES investigations(id) ON DELETE CASCADE)""")
-        
         cur.execute("""CREATE TABLE IF NOT EXISTS policy_chunks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            policy_id TEXT NOT NULL,
-            chunk_text TEXT NOT NULL,
+            id INTEGER PRIMARY KEY AUTOINCREMENT, policy_id TEXT NOT NULL, chunk_text TEXT NOT NULL,
             FOREIGN KEY (policy_id) REFERENCES policies(id) ON DELETE CASCADE)""")
-        
         cur.execute("""CREATE TABLE IF NOT EXISTS qa_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            investigation_id TEXT NOT NULL,
-            question TEXT NOT NULL,
-            answer TEXT NOT NULL,
-            policy_names TEXT,
+            id INTEGER PRIMARY KEY AUTOINCREMENT, investigation_id TEXT NOT NULL,
+            question TEXT NOT NULL, answer TEXT NOT NULL, policy_names TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (investigation_id) REFERENCES investigations(id) ON DELETE CASCADE)""")
-        
         self.conn.commit()
     
-    # User management
-    def create_user(self, username, email, password):
-        """Create new user"""
-        try:
-            user_id = str(uuid.uuid4())
-            password_hash = hash_password(password)
-            self.conn.execute("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
-                            (user_id, username, email, password_hash))
-            self.conn.commit()
-            return user_id, None
-        except sqlite3.IntegrityError as e:
-            if 'username' in str(e):
-                return None, "שם משתמש כבר קיים"
-            elif 'email' in str(e):
-                return None, "אימייל כבר קיים"
-            return None, "שגיאה ביצירת משתמש"
-    
-    def verify_user(self, username, password):
-        """Verify user credentials"""
-        password_hash = hash_password(password)
-        user = self.conn.execute("SELECT id, username FROM users WHERE username = ? AND password_hash = ?",
-                                (username, password_hash)).fetchone()
-        if user:
-            return user['id'], user['username']
-        return None, None
-    
-    def get_user_by_id(self, user_id):
-        """Get user info by ID"""
-        return self.conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    
-    # Investigation management (filtered by user)
-    def create_investigation(self, user_id, client_name, description=None):
+    def create_investigation(self, client_name, description=None):
         inv_id = str(uuid.uuid4())
-        self.conn.execute("INSERT INTO investigations (id, user_id, client_name, description) VALUES (?, ?, ?, ?)",
-                         (inv_id, user_id, client_name, description))
+        self.conn.execute("INSERT INTO investigations (id, client_name, description) VALUES (?, ?, ?)",
+                         (inv_id, client_name, description))
         self.conn.commit()
         return inv_id
     
-    def get_all_investigations(self, user_id):
-        """Get investigations for specific user only"""
-        investigations = self.conn.execute(
-            "SELECT * FROM investigations WHERE user_id = ? ORDER BY created_at DESC",
-            (user_id,)).fetchall()
+    def get_all_investigations(self):
+        investigations = self.conn.execute("SELECT * FROM investigations ORDER BY created_at DESC").fetchall()
         result = []
         for inv in investigations:
-            p_count = self.conn.execute("SELECT COUNT(*) FROM policies WHERE investigation_id = ?", 
-                                       (inv['id'],)).fetchone()[0]
-            q_count = self.conn.execute("SELECT COUNT(*) FROM qa_history WHERE investigation_id = ?", 
-                                       (inv['id'],)).fetchone()[0]
-            result.append({'id': inv['id'], 'client_name': inv['client_name'], 
-                          'description': inv['description'], 'created_at': inv['created_at'],
-                          'policy_count': p_count, 'question_count': q_count})
+            p_count = self.conn.execute("SELECT COUNT(*) FROM policies WHERE investigation_id = ?", (inv['id'],)).fetchone()[0]
+            q_count = self.conn.execute("SELECT COUNT(*) FROM qa_history WHERE investigation_id = ?", (inv['id'],)).fetchone()[0]
+            result.append({'id': inv['id'], 'client_name': inv['client_name'], 'description': inv['description'],
+                          'created_at': inv['created_at'], 'policy_count': p_count, 'question_count': q_count})
         return result
     
     def get_investigation(self, inv_id):
         return self.conn.execute("SELECT * FROM investigations WHERE id = ?", (inv_id,)).fetchone()
     
     def delete_investigation(self, inv_id):
-        files = self.conn.execute("SELECT file_path FROM policies WHERE investigation_id = ?", 
-                                 (inv_id,)).fetchall()
+        files = self.conn.execute("SELECT file_path FROM policies WHERE investigation_id = ?", (inv_id,)).fetchall()
         for f in files:
             if f['file_path'] and os.path.exists(f['file_path']):
                 try: os.remove(f['file_path'])
@@ -183,8 +105,7 @@ class Database:
         return policy_id
     
     def get_policies(self, inv_id):
-        return self.conn.execute("SELECT * FROM policies WHERE investigation_id = ? ORDER BY created_at DESC", 
-                                (inv_id,)).fetchall()
+        return self.conn.execute("SELECT * FROM policies WHERE investigation_id = ? ORDER BY created_at DESC", (inv_id,)).fetchall()
     
     def delete_policy(self, policy_id):
         row = self.conn.execute("SELECT file_path FROM policies WHERE id = ?", (policy_id,)).fetchone()
@@ -196,22 +117,21 @@ class Database:
     
     def insert_chunks(self, policy_id, chunks):
         for chunk in chunks:
-            self.conn.execute("INSERT INTO policy_chunks (policy_id, chunk_text) VALUES (?, ?)", 
-                            (policy_id, chunk))
+            self.conn.execute("INSERT INTO policy_chunks (policy_id, chunk_text) VALUES (?, ?)", (policy_id, chunk))
         self.conn.commit()
     
     def get_all_text(self, policy_id):
-        chunks = self.conn.execute("SELECT chunk_text FROM policy_chunks WHERE policy_id = ?", 
-                                  (policy_id,)).fetchall()
+        """Get all text from a policy"""
+        chunks = self.conn.execute("SELECT chunk_text FROM policy_chunks WHERE policy_id = ?", (policy_id,)).fetchall()
         return "\n\n".join([row[0] for row in chunks])
     
     def search_chunks(self, policy_id, query, top_k=10):
-        chunks = self.conn.execute("SELECT chunk_text FROM policy_chunks WHERE policy_id = ?", 
-                                  (policy_id,)).fetchall()
+        chunks = self.conn.execute("SELECT chunk_text FROM policy_chunks WHERE policy_id = ?", (policy_id,)).fetchall()
         query_lower = query.lower()
         scored = []
         for row in chunks:
             text = row[0]
+            # Better scoring for price queries
             score = 0
             if 'מחיר' in query_lower or 'עלות' in query_lower or 'פרמיה' in query_lower:
                 if 'גיל' in text.lower() or 'מחיר' in text.lower() or 'פרמיה' in text.lower():
@@ -227,9 +147,8 @@ class Database:
         self.conn.commit()
     
     def get_qa_history(self, inv_id):
-        return self.conn.execute(
-            "SELECT question, answer, policy_names, created_at FROM qa_history WHERE investigation_id = ? ORDER BY created_at DESC",
-            (inv_id,)).fetchall()
+        return self.conn.execute("SELECT question, answer, policy_names, created_at FROM qa_history WHERE investigation_id = ? ORDER BY created_at DESC",
+                                (inv_id,)).fetchall()
 
 def extract_text_from_pdf(pdf_file):
     if not PDF_SUPPORT: return "", 0
@@ -243,7 +162,10 @@ def extract_text_from_pdf(pdf_file):
     except: return "", 0
 
 def detect_company(text):
+    """Detect company with better patterns"""
     text_lower = text.lower()
+    
+    # Check for specific patterns
     if 'מגדל' in text or 'migdal' in text_lower:
         return "מגדל"
     elif 'הראל' in text or 'harel' in text_lower:
@@ -256,9 +178,11 @@ def detect_company(text):
         return "הפניקס"
     elif 'איילון' in text:
         return "איילון"
+    
     return None
 
 def create_chunks(text, size=1500, overlap=300):
+    """Larger chunks to keep tables together"""
     words = text.split()
     chunks = []
     for i in range(0, len(words), size - overlap):
@@ -278,74 +202,9 @@ def init_connections():
 
 db, claude_client = init_connections()
 
-# LOGIN / REGISTER PAGE
-if not st.session_state.authenticated:
-    st.title("🔐 השוואת פוליסות ביטוח")
-    
-    tab1, tab2 = st.tabs(["🔑 כניסה", "✨ הרשמה"])
-    
-    with tab1:
-        st.subheader("כניסה למערכת")
-        with st.form("login_form"):
-            username = st.text_input("שם משתמש")
-            password = st.text_input("סיסמה", type="password")
-            submit = st.form_submit_button("התחבר", type="primary", use_container_width=True)
-            
-            if submit:
-                if username and password:
-                    user_id, user_name = db.verify_user(username, password)
-                    if user_id:
-                        st.session_state.authenticated = True
-                        st.session_state.user_id = user_id
-                        st.session_state.username = user_name
-                        st.success(f"שלום {user_name}!")
-                        st.rerun()
-                    else:
-                        st.error("שם משתמש או סיסמה שגויים")
-                else:
-                    st.warning("נא למלא את כל השדות")
-    
-    with tab2:
-        st.subheader("הרשמה למערכת")
-        with st.form("register_form"):
-            new_username = st.text_input("שם משתמש (באנגלית)")
-            new_email = st.text_input("אימייל")
-            new_password = st.text_input("סיסמה", type="password")
-            new_password_confirm = st.text_input("אישור סיסמה", type="password")
-            register = st.form_submit_button("הירשם", type="primary", use_container_width=True)
-            
-            if register:
-                if not all([new_username, new_email, new_password, new_password_confirm]):
-                    st.warning("נא למלא את כל השדות")
-                elif new_password != new_password_confirm:
-                    st.error("הסיסמאות לא תואמות")
-                elif len(new_password) < 6:
-                    st.error("הסיסמה חייבת להכיל לפחות 6 תווים")
-                else:
-                    user_id, error = db.create_user(new_username, new_email, new_password)
-                    if user_id:
-                        st.success("נרשמת בהצלחה! עבור ללשונית 'כניסה'")
-                    else:
-                        st.error(error)
-    
-    st.stop()
-
-# MAIN APP (AUTHENTICATED USERS ONLY)
-
 # SIDEBAR
 with st.sidebar:
     st.title("🔍 חקירות")
-    
-    # User info and logout
-    st.info(f"👤 {st.session_state.username}")
-    if st.button("🚪 התנתק", use_container_width=True):
-        st.session_state.authenticated = False
-        st.session_state.user_id = None
-        st.session_state.username = None
-        st.session_state.current_investigation_id = None
-        st.rerun()
-    
-    st.markdown("---")
     
     if st.session_state.current_investigation_id:
         inv = db.get_investigation(st.session_state.current_investigation_id)
@@ -368,66 +227,34 @@ with st.sidebar:
         client_name = st.text_input("לקוח")
         if st.button("צור", type="primary", use_container_width=True):
             if client_name:
-                inv_id = db.create_investigation(st.session_state.user_id, client_name, "")
+                inv_id = db.create_investigation(client_name, "")
                 st.session_state.current_investigation_id = inv_id
                 st.rerun()
     
     st.markdown("---")
-    investigations = db.get_all_investigations(st.session_state.user_id)
+    investigations = db.get_all_investigations()
     
-    if investigations:
-        st.caption(f"החקירות שלי ({len(investigations)})")
-        for inv in investigations:
-            if st.button(f"🟢 {inv['client_name']}", key=f"inv_{inv['id']}", use_container_width=True):
-                st.session_state.current_investigation_id = inv['id']
-                st.rerun()
-    else:
-        st.info("אין חקירות. צור חקירה חדשה!")
+    for inv in investigations:
+        if st.button(f"🟢 {inv['client_name']}", key=f"inv_{inv['id']}", use_container_width=True):
+            st.session_state.current_investigation_id = inv['id']
+            st.rerun()
 
 st.sidebar.markdown("---")
-
-# DEBUG SECTION - Shows username and admin status
-st.sidebar.write("🔧 DEBUG INFO:")
-st.sidebar.write(f"Usuario actual: **{st.session_state.username}**")
-st.sidebar.write(f"Username == 'admin'? **{st.session_state.username == 'admin'}**")
-st.sidebar.write(f"Tipo: **{type(st.session_state.username)}**")
-
-# Navigation menu - add Admin page only for admin user
-pages = ["🏠 בית", "📤 העלאה", "❓ שאלות", "⚖️ השוואה", "📜 היסטוריה"]
-
-if st.session_state.username == "admin":
-    pages.append("👑 ניהול")
-    st.sidebar.success("✅ Usuario admin detectado - botón agregado")
-else:
-    st.sidebar.warning(f"⚠️ No es admin (usuario: '{st.session_state.username}')")
-
-st.sidebar.write(f"Páginas disponibles: {len(pages)}")
-
-for page in pages:
+for page in ["🏠 בית", "📤 העלאה", "❓ שאלות", "⚖️ השוואה", "📜 היסטוריה"]:
     if st.sidebar.button(page, use_container_width=True, key=f"nav_{page}"):
         st.session_state.page = page
 
-# MAIN CONTENT
+# MAIN
 if not st.session_state.current_investigation_id and st.session_state.page != "🏠 בית":
     st.warning("⚠️ בחר חקירה")
     st.stop()
 
 if st.session_state.page == "🏠 בית":
     st.title("🏠 השוואת פוליסות")
-    st.write(f"שלום **{st.session_state.username}**! 👋")
-    
-    all_inv = db.get_all_investigations(st.session_state.user_id)
+    all_inv = db.get_all_investigations()
     col1, col2 = st.columns(2)
-    with col1: st.metric("החקירות שלי", len(all_inv))
+    with col1: st.metric("חקירות", len(all_inv))
     with col2: st.metric("פוליסות", sum(inv['policy_count'] for inv in all_inv))
-    
-    if all_inv:
-        st.markdown("### 📊 החקירות האחרונות")
-        for inv in all_inv[:5]:
-            with st.expander(f"🔍 {inv['client_name']}"):
-                st.write(f"**פוליסות:** {inv['policy_count']}")
-                st.write(f"**שאלות:** {inv['question_count']}")
-                st.caption(f"נוצר: {inv['created_at']}")
 
 elif st.session_state.page == "📤 העלאה":
     st.title("📤 העלאה")
@@ -439,6 +266,7 @@ elif st.session_state.page == "📤 העלאה":
     
     if uploaded_file:
         with st.spinner("מעבד..."):
+            # Extract text
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
                 tmp.write(uploaded_file.getvalue())
                 tmp_path = tmp.name
@@ -450,11 +278,13 @@ elif st.session_state.page == "📤 העלאה":
                 
                 if detected_company:
                     count = db.get_company_count(st.session_state.current_investigation_id, detected_company)
+                    # Better naming
                     if count == 0:
                         auto_name = detected_company
                     else:
                         auto_name = f"{detected_company} {count + 1}"
                 else:
+                    # Use original filename without extension
                     auto_name = uploaded_file.name.replace('.pdf', '').replace('-', ' ')
                 
                 st.success(f"✅ זוהתה חברה: **{detected_company or 'לא זוהה'}**")
@@ -463,21 +293,24 @@ elif st.session_state.page == "📤 העלאה":
                     company = st.selectbox("חברה", COMPANIES, 
                                           index=COMPANIES.index(detected_company) if detected_company in COMPANIES else 0)
                     custom_name = st.text_input("שם הפוליסה", value=auto_name,
-                                               help="השם שיוצג ברשימה")
+                                               help="השם שיוצג ברשימה - למשל: הראל, מגדל 2, וכו׳")
                     st.info(f"📄 {total_pages} עמודים")
                     
                     if st.form_submit_button("💾 שמור", type="primary"):
+                        # Save with company name
                         safe_filename = f"{company}_{uuid.uuid4().hex[:8]}.pdf"
                         final_path = os.path.join(UPLOAD_DIR, safe_filename)
                         shutil.copy2(tmp_path, final_path)
                         
+                        # Create chunks
                         chunks = create_chunks(text)
                         
+                        # Save to database
                         policy_id = db.insert_policy(
                             st.session_state.current_investigation_id,
                             company,
                             uploaded_file.name,
-                            custom_name,
+                            custom_name,  # Use the custom name as entered
                             final_path,
                             total_pages
                         )
@@ -486,6 +319,7 @@ elif st.session_state.page == "📤 העלאה":
                         st.success(f"✅ נשמר: **{custom_name}**")
                         st.balloons()
                         
+                        # Cleanup temp
                         try: os.unlink(tmp_path)
                         except: pass
                         
@@ -497,6 +331,7 @@ elif st.session_state.page == "📤 העלאה":
     
     st.markdown("---")
     
+    # Get policies ONLY for current investigation
     policies = db.get_policies(st.session_state.current_investigation_id)
     
     if policies:
@@ -532,7 +367,7 @@ elif st.session_state.page == "❓ שאלות":
         
         if selected_names:
             query = st.text_area("שאל שאלה:", 
-                                placeholder="למשל: מה המחיר החודשי לגיל 30?",
+                                placeholder="למשל: מה המחיר החודשי לגיל 30? או: מה ההשתתפות העצמית?",
                                 height=100)
             
             if st.button("🔍 שאל", type="primary") and query and claude_client:
@@ -541,6 +376,7 @@ elif st.session_state.page == "❓ שאלות":
                         selected_ids = [policy_options[name] for name in selected_names]
                         all_contexts = []
                         
+                        # Get MORE relevant chunks
                         for name, pol_id in zip(selected_names, selected_ids):
                             chunks = db.search_chunks(pol_id, query, top_k=10)
                             if chunks:
@@ -553,24 +389,30 @@ elif st.session_state.page == "❓ שאלות":
                             response = claude_client.messages.create(
                                 model="claude-sonnet-4-20250514",
                                 max_tokens=1200,
-                                system="""אתה מומחה ביטוח ישראלי. חלץ מידע מדויק מפוליסות.
+                                system="""אתה מומחה ביטוח ישראלי. תפקידך לחלץ מידע מדויק מפוליסות ביטוח.
 
-כללים:
-1. חפש טבלאות מחירים והצג אותן במדויק
-2. אל תמציא מידע
-3. אם אין מידע - אמר זאת
-4. ענה בעברית פשוטה
-5. השווה בין פוליסות
+כללים קריטיים:
+1. אם שואלים על מחירים - חפש טבלאות מחירים והצג אותן במדויק
+2. אם יש טבלת גילאים ומחירים - הצג אותה בפורמט ברור
+3. אל תמציא מידע - רק מה שכתוב בפוליסה
+4. אם אין מידע - אמר זאת במפורש
+5. ענה בעברית פשוטה וברורה
+6. השווה בין פוליסות אם יש יותר מאחת
 
-פורמט:
+פורמט תשובה:
 ### [שם הפוליסה]
-[המידע]""",
-                                messages=[{"role": "user", "content": f"""שאלה: {query}
+[המידע המבוקש]
 
-תוכן:
+אם יש מחירים - הצג בטבלה.""",
+                                messages=[{
+                                    "role": "user", 
+                                    "content": f"""שאלה: {query}
+
+תוכן הפוליסות:
 {combined}
 
-ענה בדיוק על סמך המידע."""}]
+אנא ענה על השאלה בדיוק על סמך המידע המצורף. חלץ מחירים ונתונים מדויקים."""
+                                }]
                             )
                             
                             answer = response.content[0].text
@@ -579,12 +421,13 @@ elif st.session_state.page == "❓ שאלות":
                             
                             db.save_qa(st.session_state.current_investigation_id, query, answer, selected_names)
                         else:
-                            st.warning("❌ לא נמצא מידע")
+                            st.warning("❌ לא נמצא מידע רלוונטי לשאלה")
+                    
                     except Exception as e:
                         st.error(f"❌ שגיאה: {str(e)}")
 
 elif st.session_state.page == "⚖️ השוואה":
-    st.title("⚖️ השוואה")
+    st.title("⚖️ השוואה מפורטת")
     policies = db.get_policies(st.session_state.current_investigation_id)
     
     if len(policies) < 2:
@@ -596,7 +439,7 @@ elif st.session_state.page == "⚖️ השוואה":
         
         if len(selected_names) >= 2:
             if st.button("🔍 השווה", type="primary") and claude_client:
-                with st.spinner("מכין השוואה..."):
+                with st.spinner("מכין השוואה מקיפה..."):
                     try:
                         selected_ids = [policy_options[name] for name in selected_names]
                         all_texts = []
@@ -610,22 +453,39 @@ elif st.session_state.page == "⚖️ השוואה":
                         response = claude_client.messages.create(
                             model="claude-sonnet-4-20250514",
                             max_tokens=2500,
-                            system="""מומחה השוואת פוליסות. הכן השוואה מקיפה.
+                            system="""אתה מומחה השוואת פוליסות ביטוח. הכן השוואה מקיפה ומדויקת.
 
-פורמט:
-# 📊 השוואה
+פורמט חובה:
 
-## 💰 מחירים
-[טבלה]
+# 📊 השוואת פוליסות
 
-## 🏥 כיסויים
+## 💰 מחירים לפי גיל
+[חלץ טבלת מחירים מכל פוליסה - הצג בטבלה]
+
+## 🏥 כיסויים עיקריים
+[מה כל פוליסה מכסה]
 
 ## 💵 השתתפות עצמית
+[כמה צריך לשלם בפועל]
 
-## 🎯 המלצה""",
-                            messages=[{"role": "user", "content": f"""השווה:
+## ⏰ תקופת אכשרה
+[מתי הכיסוי מתחיל]
 
-{combined}"""}]
+## ⚖️ השוואה ישירה
+[טבלת השוואה]
+
+## 🎯 המלצה
+[איזו פוליסה עדיפה ולמי]
+
+**חשוב: חלץ מחירים מדויקים מטבלאות!**""",
+                            messages=[{
+                                "role": "user",
+                                "content": f"""השווה בין הפוליסות הבאות באופן מקיף:
+
+{combined}
+
+הכן השוואה מפורטת עם דגש על מחירים מדויקים."""
+                            }]
                         )
                         
                         comparison = response.content[0].text
@@ -633,8 +493,11 @@ elif st.session_state.page == "⚖️ השוואה":
                         
                         db.save_qa(st.session_state.current_investigation_id, "השוואה מפורטת", 
                                   comparison, selected_names)
+                    
                     except Exception as e:
                         st.error(f"❌ {str(e)}")
+        else:
+            st.info("בחר לפחות 2 פוליסות")
 
 elif st.session_state.page == "📜 היסטוריה":
     st.title("📜 היסטוריה")
@@ -655,86 +518,5 @@ elif st.session_state.page == "📜 היסטוריה":
     else:
         st.info("אין היסטוריה")
 
-elif st.session_state.page == "👑 ניהול":
-    # Admin page - only accessible by admin user
-    if st.session_state.username != "admin":
-        st.error("⛔ אין לך הרשאה לצפות בדף זה")
-        st.stop()
-    
-    st.title("👑 פאנל ניהול")
-    st.caption("מידע זה זמין רק למנהל המערכת")
-    
-    # Get all users
-    all_users = db.conn.execute("SELECT id, username, email, created_at FROM users ORDER BY created_at DESC").fetchall()
-    
-    # Statistics
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("👥 סך משתמשים", len(all_users))
-    with col2:
-        total_investigations = db.conn.execute("SELECT COUNT(*) FROM investigations").fetchone()[0]
-        st.metric("🔍 סך חקירות", total_investigations)
-    with col3:
-        total_policies = db.conn.execute("SELECT COUNT(*) FROM policies").fetchone()[0]
-        st.metric("📄 סך פוליסות", total_policies)
-    
-    st.markdown("---")
-    
-    # User list with details
-    st.subheader("📋 רשימת משתמשים")
-    
-    for user in all_users:
-        user_id = user[0]
-        username = user[1]
-        email = user[2]
-        created_at = user[3]
-        
-        # Get user statistics
-        user_investigations = db.conn.execute(
-            "SELECT COUNT(*) FROM investigations WHERE user_id = ?", (user_id,)).fetchone()[0]
-        
-        user_policies = db.conn.execute(
-            """SELECT COUNT(*) FROM policies 
-               WHERE investigation_id IN (SELECT id FROM investigations WHERE user_id = ?)""", 
-            (user_id,)).fetchone()[0]
-        
-        user_questions = db.conn.execute(
-            """SELECT COUNT(*) FROM qa_history 
-               WHERE investigation_id IN (SELECT id FROM investigations WHERE user_id = ?)""", 
-            (user_id,)).fetchone()[0]
-        
-        with st.expander(f"👤 {username} ({email})"):
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.write(f"**אימייל:** {email}")
-                st.write(f"**תאריך הצטרפות:** {created_at}")
-                st.caption(f"🔍 {user_investigations} חקירות | 📄 {user_policies} פוליסות | ❓ {user_questions} שאלות")
-            with col2:
-                if username != "admin":
-                    if st.button("🗑️ מחק", key=f"delete_user_{user_id}"):
-                        # Delete user and all their data
-                        db.conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-                        db.conn.commit()
-                        st.success(f"משתמש {username} נמחק")
-                        st.rerun()
-    
-    st.markdown("---")
-    
-    # Recent activity
-    st.subheader("📊 פעילות אחרונה")
-    recent_activity = db.conn.execute("""
-        SELECT u.username, i.client_name, i.created_at 
-        FROM investigations i 
-        JOIN users u ON i.user_id = u.id 
-        ORDER BY i.created_at DESC 
-        LIMIT 10
-    """).fetchall()
-    
-    if recent_activity:
-        for username, client_name, created_at in recent_activity:
-            st.caption(f"🔍 {username} יצר חקירה: **{client_name}** ({created_at})")
-    else:
-        st.info("אין פעילות עדיין")
-
 st.markdown("---")
-st.caption(f"מערכת השוואת פוליסות | משתמש: {st.session_state.username}")
+st.caption("מערכת השוואת פוליסות | Claude AI")
