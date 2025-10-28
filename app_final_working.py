@@ -387,7 +387,7 @@ with st.sidebar:
 st.sidebar.markdown("---")
 
 # Navigation menu - add Admin page only for admin user
-pages = ["🏠 בית", "📤 העלאה", "❓ שאלות", "⚖️ השוואה", "📜 היסטוריה"]
+pages = ["🏠 בית", "📥 איך להשיג פוליסות", "📤 העלאה", "❓ שאלות", "⚖️ השוואה", "📜 היסטוריה"]
 if st.session_state.username == "admin":
     pages.append("👑 ניהול")
 
@@ -396,7 +396,7 @@ for page in pages:
         st.session_state.page = page
 
 # MAIN CONTENT
-if not st.session_state.current_investigation_id and st.session_state.page not in ["🏠 בית", "👑 ניהול"]:
+if not st.session_state.current_investigation_id and st.session_state.page not in ["🏠 בית", "📥 איך להשיג פוליסות", "👑 ניהול"]:
     st.warning("⚠️ בחר חקירה")
     st.stop()
 
@@ -416,6 +416,143 @@ if st.session_state.page == "🏠 בית":
                 st.write(f"**פוליסות:** {inv['policy_count']}")
                 st.write(f"**שאלות:** {inv['question_count']}")
                 st.caption(f"נוצר: {inv['created_at']}")
+
+elif st.session_state.page == "📥 איך להשיג פוליסות":
+    st.title("📥 איך להשיג את הפוליסות שלך")
+    st.write("מדריך פשוט לקבלת פוליסות מכל חברות הביטוח")
+    
+    st.markdown("---")
+    
+    # Introduction
+    st.info("💡 **טיפ:** רוב חברות הביטוח מאפשרות להוריד את הפוליסות שלך דרך האזור האישי באתר")
+    
+    st.markdown("---")
+    
+    # Migdal
+    with st.expander("🏢 מגדל - Migdal"):
+        st.markdown("""
+        ### שלבים לקבלת הפוליסה:
+        
+        1. **כנס לאתר:** [www.migdal.co.il](https://www.migdal.co.il)
+        2. **התחבר לאזור האישי** (למעלה בצד ימין)
+        3. **לחץ על "הפוליסות שלי"**
+        4. **בחר את הפוליסה** שרוצה להוריד
+        5. **לחץ על "הורד פוליסה"** או "PDF"
+        
+        📞 **מוקד שירות:** *2679
+        📧 **אימייל:** info@migdal.co.il
+        """)
+    
+    # Harel
+    with st.expander("🏢 הראל - Harel"):
+        st.markdown("""
+        ### שלבים לקבלת הפוליסה:
+        
+        1. **כנס לאתר:** [www.harel-group.co.il](https://www.harel-group.co.il)
+        2. **התחבר לאזור האישי**
+        3. **לחץ על "הפוליסות שלי"**
+        4. **בחר "ביטוח בריאות" / "חיסכון" / "פנסיה"** (לפי סוג הפוליסה)
+        5. **הורד PDF של הפוליסה**
+        
+        📞 **מוקד שירות:** *2407
+        📧 **אימייל:** service@harel-group.co.il
+        """)
+    
+    # Clal
+    with st.expander("🏢 כלל - Clal"):
+        st.markdown("""
+        ### שלבים לקבלת הפוליסה:
+        
+        1. **כנס לאתר:** [www.clalbit.co.il](https://www.clalbit.co.il)
+        2. **התחבר לאזור האישי**
+        3. **בחר "הפוליסות שלי"**
+        4. **לחץ על הפוליסה הרלוונטית**
+        5. **הורד את קובץ ה-PDF**
+        
+        📞 **מוקד שירות:** *2800
+        📧 **אימייל:** digital@clalbit.co.il
+        """)
+    
+    # Menora
+    with st.expander("🏢 מנורה - Menora"):
+        st.markdown("""
+        ### שלבים לקבלת הפוליסה:
+        
+        1. **כנס לאתר:** [www.menoramivt.co.il](https://www.menoramivt.co.il)
+        2. **התחבר לאזור האישי**
+        3. **לחץ על "הפוליסות שלי"**
+        4. **בחר את סוג הביטוח** (בריאות/חיים/פנסיה)
+        5. **הורד את הפוליסה בפורמט PDF**
+        
+        📞 **מוקד שירות:** *2000
+        📧 **אימייל:** moked-health@menora.co.il
+        """)
+    
+    # Phoenix
+    with st.expander("🏢 הפניקס - Phoenix"):
+        st.markdown("""
+        ### שלבים לקבלת הפוליסה:
+        
+        1. **כנס לאתר:** [www.fnx.co.il](https://www.fnx.co.il)
+        2. **התחבר לאזור האישי**
+        3. **בחר "הפוליסות שלי"**
+        4. **לחץ על הפוליסה שרוצה לראות**
+        5. **הורד PDF**
+        
+        📞 **מוקד שירות:** *6836
+        📧 **אימייל:** service@fnx.co.il
+        """)
+    
+    # Ayalon
+    with st.expander("🏢 איילון - Ayalon"):
+        st.markdown("""
+        ### שלבים לקבלת הפוליסה:
+        
+        1. **כנס לאתר:** [www.ayalon-ins.co.il](https://www.ayalon-ins.co.il)
+        2. **התחבר לאזור האישי**
+        3. **לחץ על "פוליסות"**
+        4. **בחר את הפוליסה הרלוונטית**
+        5. **הורד כ-PDF**
+        
+        📞 **מוקד שירות:** *5620
+        📧 **אימייל:** digital@ayalon-ins.co.il
+        """)
+    
+    st.markdown("---")
+    
+    # Alternative method - Har Habituch
+    st.markdown("### 🏔️ דרך נוספת: הר הביטוח")
+    st.info("""
+    **הר הביטוח** הוא אתר ממשלתי שמאפשר לראות את **כל הפוליסות** שלך ממקום אחד!
+    
+    🔗 **כניסה:** [www.har-habituh.gov.il](https://www.har-habituh.gov.il)
+    
+    **איך זה עובד:**
+    1. כניסה עם תעודת זהות
+    2. כל הפוליסות שלך במקום אחד
+    3. אפשרות להוריד PDF של כל פוליסה
+    """)
+    
+    st.markdown("---")
+    
+    # Tips
+    st.markdown("### 💡 טיפים חשובים")
+    st.success("""
+    ✅ **וודא שהפוליסה מעודכנת** - בדוק שהתאריך עדכני
+    
+    ✅ **שמור את כל העמודים** - לפעמים יש מספר קבצים
+    
+    ✅ **בעיות בהתחברות?** - פנה למוקד השירות, הם ישלחו לך במייל
+    
+    ✅ **אין לך גישה לאינטרנט?** - אפשר להתקשר ולבקש שישלחו במייל
+    """)
+    
+    st.markdown("---")
+    
+    # Need help
+    st.markdown("### 🆘 צריך עזרה?")
+    st.write("אם אתה מתקשה להשיג את הפוליסות, אנחנו כאן לעזור!")
+    st.write("📧 צור קשר עם הסוכן שלך או עם מוקד השירות של חברת הביטוח")
 
 elif st.session_state.page == "📤 העלאה":
     st.title("📤 העלאה")
