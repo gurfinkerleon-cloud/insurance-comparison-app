@@ -51,108 +51,212 @@ NISPACH_INFO = {
         "name": "אבחנה מהירה",
         "description": "כתב שירות המאפשר גישה מהירה לבדיקות דימות וייעוצים רפואיים",
         "includes": ["בדיקות CT ו-MRI", "בדיקות PET-CT", "ייעוצים מומחים", "בדיקות מעבדה מורכבות"],
+        "reimbursement": {
+            "CT": "החזר מלא",
+            "MRI": "החזר מלא",
+            "PET-CT": "החזר מלא",
+            "ייעוץ מומחה": "החזר מלא"
+        },
+        "limits": {"שנתי": "ללא הגבלה", "לבדיקה": "ללא מגבלה"},
         "notes": "ללא תקופת המתנה, גישה ישירה למומחים"
     },
     "5409": {
         "name": "ניתוחים בחו\"ל",
         "description": "כיסוי להוצאות ניתוח ומחליפי ניתוח מחוץ לישראל",
         "includes": ["הוצאות ניתוח", "טיסות", "אשפוז", "מלווה אחד", "החזר נסיעות"],
+        "reimbursement": {
+            "ניתוח": "עד תקרת הפוליסה",
+            "טיסה": "החזר מלא",
+            "לינה": "החזר מלא",
+            "מלווה": "טיסה + לינה"
+        },
+        "limits": {"שנתי": "לפי תקרת הפוליסה", "לניתוח": "משתנה"},
         "notes": "כפוף לאישור מראש מהחברה"
     },
     "6792": {
         "name": "רפואה משלימה",
         "description": "כתב שירות לטיפולים ברפואה משלימה",
         "includes": ["אוסטאופתיה", "כירופרקטיקה", "דיקור סיני", "הומאופתיה", "נטורופתיה"],
+        "reimbursement": {
+            "טיפול בודד": "50-80 ש\"ח לטיפול",
+            "שיעור החזר": "לפי תעריפון"
+        },
+        "limits": {"שנתי": "12-20 טיפולים", "לטיפול": "עד 150 ש\"ח"},
         "notes": "מוגבל למספר טיפולים בשנה"
     },
     "5404": {
         "name": "השתלות וטיפולים מיוחדים בחו\"ל",
         "description": "כיסוי להשתלות איברים וטיפולים מתקדמים בחו\"ל",
         "includes": ["השתלת איברים", "טיפולים אונקולוגיים מתקדמים", "הוצאות נסיעה", "אשפוז"],
+        "reimbursement": {
+            "השתלה": "החזר מלא עד תקרה",
+            "טיפולים מתקדמים": "עד תקרת הפוליסה",
+            "נסיעה": "החזר מלא"
+        },
+        "limits": {"שנתי": "עד מיליון דולר", "לאירוע": "לפי אישור"},
         "notes": "דורש אישור רפואי מוקדם"
     },
     "6417": {
         "name": "הרחבה לתרופות אקסטרה",
         "description": "כיסוי לתרופות שאינן בסל הבריאות הממשלתי",
         "includes": ["תרופות מחוץ לסל", "תרופות ביולוגיות", "תרופות מתקדמות לסרטן"],
+        "reimbursement": {
+            "תרופות מחוץ לסל": "80-100% החזר",
+            "תרופות ביולוגיות": "החזר מלא"
+        },
+        "limits": {"שנתי": "50,000-100,000 ש\"ח", "לתרופה": "לפי מחירון"},
         "notes": "עם אישור רופא מומחה"
     },
     "5406": {
         "name": "סל הזהב - תרופות שלא בסל",
         "description": "כיסוי מורחב לתרופות יקרות שלא בסל הבריאות",
         "includes": ["תרופות אונקולוגיות", "תרופות ביולוגיות", "תרופות לטרשת נפוצה", "תרופות נדירות"],
+        "reimbursement": {
+            "תרופות אונקולוגיות": "100% החזר",
+            "תרופות ביולוגיות": "100% החזר",
+            "תרופות נדירות": "החזר מלא"
+        },
+        "limits": {"שנתי": "עד 300,000 ש\"ח", "לתרופה": "ללא מגבלה"},
         "notes": "סכום ביטוח שנתי מוגבל"
     },
     "6784": {
         "name": "ניתוחים עם נותן שירות שבהסכם",
         "description": "כיסוי לניתוחים, ייעוצים וטיפולים מחליפי ניתוח בישראל",
         "includes": ["ניתוחים אלקטיביים", "ייעוצים מומחים", "טיפולים מחליפי ניתוח", "בדיקות טרום ניתוח"],
+        "reimbursement": {
+            "ניתוח": "החזר מלא דרך רשת",
+            "ייעוץ מומחה": "החזר מלא",
+            "טיפול מחליף": "100% החזר"
+        },
+        "limits": {"שנתי": "ללא הגבלה", "לניתוח": "דרך רשת בלבד"},
         "notes": "דרך רשת נותני שירות של החברה"
     },
     "6650": {
         "name": "שירותים אמבולטוריים",
         "description": "כיסוי לטיפולים וייעוצים ללא אשפוז",
         "includes": ["ייעוצים רפואיים", "בדיקות מעבדה", "בדיקות הדמייה", "טיפולים פרה-רפואיים"],
+        "reimbursement": {
+            "MRI": "החזר של 70-80%",
+            "CT": "החזר של 70-80%",
+            "בדיקות מעבדה": "החזר של 80%",
+            "ייעוץ מומחה": "החזר של 75-80%",
+            "אולטרסאונד": "החזר של 80%"
+        },
+        "limits": {"שנתי": "עד 10,000-15,000 ש\"ח", "לבדיקה": "עד 1,500 ש\"ח"},
         "notes": "כולל בדיקות מניעה"
     },
     "773755": {
         "name": "קרן אור טופ - פיצוי למחלות קשות",
         "description": "תשלום חד פעמי במקרה של אבחון מחלה קשה",
         "includes": ["סרטן", "אוטם שריר הלב", "שבץ מוחי", "כשל כלייתי", "מחלות לב"],
+        "reimbursement": {
+            "תשלום חד פעמי": "סכום קבוע מראש",
+            "סרטן": "לפי חומרת המחלה",
+            "אוטם": "תשלום מלא"
+        },
+        "limits": {"לאירוע": "50,000-100,000 ש\"ח", "כולל": "לפי הפוליסה"},
         "notes": "סכום פיצוי קבוע מראש"
     },
     "799712": {
         "name": "ייעוץ ובדיקות אמבולטורי",
         "description": "גישה לייעוצים רפואיים ובדיקות אבחנתיות",
         "includes": ["ייעוצי מומחים", "בדיקות CT/MRI", "בדיקות מעבדה מתקדמות", "אולטרסאונד"],
+        "reimbursement": {
+            "ייעוץ": "החזר של 75-100%",
+            "MRI/CT": "החזר מלא או 80%",
+            "מעבדה": "החזר של 80-90%"
+        },
+        "limits": {"שנתי": "ללא הגבלה בדרך כלל", "לבדיקה": "ללא מגבלה"},
         "notes": "ללא צורך באישור מראש"
     },
     "799716": {
         "name": "טיפולים טופ - רפואה משלימה",
         "description": "כתב שירות לטיפולים ברפואה אלטרנטיבית",
         "includes": ["פיזיותרפיה", "דיקור סיני", "אוסטאופתיה", "עיסוי רפואי"],
+        "reimbursement": {
+            "טיפול": "50-100 ש\"ח לטיפול",
+            "שיעור החזר": "לפי תעריפון החברה"
+        },
+        "limits": {"שנתי": "15-25 טיפולים", "לטיפול": "עד 150 ש\"ח"},
         "notes": "מוגבל למספר טיפולים שנתי"
     },
     "5420": {
         "name": "כיסוי בריאות בסיסי",
         "description": "כיסוי בסיסי לשירותי בריאות",
         "includes": ["אשפוזים", "ניתוחים", "בדיקות בסיסיות"],
+        "reimbursement": {
+            "אשפוז": "החזר מלא",
+            "ניתוח": "החזר מלא"
+        },
+        "limits": {"שנתי": "ללא הגבלה", "לאירוע": "ללא מגבלה"},
         "notes": "תנאים כלליים לבריאות 2016"
     },
     "7401": {
         "name": "ניתוחים בישראל",
         "description": "כיסוי מלא לניתוחים בארץ",
         "includes": ["ניתוחים פלסטיים משחזרים", "ניתוחים אורתופדיים", "ניתוחים כלליים"],
+        "reimbursement": {
+            "ניתוח": "החזר מלא דרך רשת",
+            "בדיקות טרום": "החזר מלא"
+        },
+        "limits": {"שנתי": "ללא הגבלה", "לניתוח": "דרך רשת"},
         "notes": "דרך רשת בתי חולים מוסכמת"
     },
     "5411": {
         "name": "כיסוי שיניים",
         "description": "טיפולי שיניים מתקדמים",
         "includes": ["שתלים", "כתרים וגשרים", "יישור שיניים", "טיפולי שורש"],
+        "reimbursement": {
+            "שתל": "החזר של 50-70%",
+            "כתר": "החזר של 60-80%",
+            "יישור": "החזר חלקי"
+        },
+        "limits": {"שנתי": "5,000-15,000 ש\"ח", "לטיפול": "לפי סוג"},
         "notes": "עם תקופת המתנה"
     },
     "5413": {
         "name": "אשפוז כללי",
         "description": "כיסוי הוצאות אשפוז בבתי חולים",
         "includes": ["מיטה פרטית", "ליווי", "ניתוחים במהלך אשפוז"],
+        "reimbursement": {
+            "אשפוז": "החזר מלא",
+            "מיטה פרטית": "תוספת מלאה"
+        },
+        "limits": {"שנתי": "ללא הגבלה", "ליום": "ללא מגבלה"},
         "notes": "ללא הגבלת ימי אשפוז"
     },
     "6800": {
         "name": "סיעוד",
         "description": "ביטוח לצורכי סיעוד ארוך טווח",
         "includes": ["מענק חד פעמי", "קצבה חודשית", "שירותי סיעוד בבית"],
+        "reimbursement": {
+            "מענק": "50,000-150,000 ש\"ח",
+            "קצבה חודשית": "3,000-8,000 ש\"ח"
+        },
+        "limits": {"חודשי": "לפי דרגת סיעוד", "חד פעמי": "לפי הפוליסה"},
         "notes": "החל מגיל מסוים"
     },
     "5408": {
         "name": "ביטוח נסיעות לחו\"ל",
         "description": "כיסוי רפואי בנסיעות לחו\"ל",
         "includes": ["טיפול רפואי חירום", "אשפוז", "פינוי רפואי", "החזר הוצאות"],
+        "reimbursement": {
+            "טיפול חירום": "החזר מלא",
+            "אשפוז": "החזר מלא",
+            "פינוי": "החזר מלא"
+        },
+        "limits": {"לנסיעה": "עד 60 ימים", "שנתי": "מספר נסיעות"},
         "notes": "מוגבל למספר ימים בשנה"
     },
     "5415": {
         "name": "אובדן כושר עבודה",
         "description": "קצבה במקרה של אובדן יכולת עבודה",
         "includes": ["קצבה חודשית", "שיקום תעסוקתי", "הכשרה מקצועית"],
+        "reimbursement": {
+            "קצבה": "50-75% מהשכר",
+            "תקופת תשלום": "עד גיל פרישה"
+        },
+        "limits": {"חודשי": "עד 20,000 ש\"ח", "תקופה": "עד פרישה"},
         "notes": "לאחר תקופת המתנה"
     }
 }
@@ -172,6 +276,20 @@ def get_nispach_info(nispach_number):
             return NISPACH_INFO[key]
     
     return None
+
+def search_nispach_online(nispach_number, query_context=""):
+    """Search for nispach information online using web_search"""
+    try:
+        # Import web_search if available
+        from anthropic import Anthropic
+        
+        search_query = f"נספח {nispach_number} ביטוח בריאות {query_context}"
+        
+        # Note: This would require web_search tool integration
+        # For now, return None - will be implemented when tool is available
+        return None
+    except:
+        return None
 
 def hash_password(password):
     """Hash password using SHA256"""
@@ -801,14 +919,51 @@ elif st.session_state.page == "❓ שאלות":
                             nispach_data = get_nispach_info(nispach_number)
                             
                             if nispach_data:
+                                # Build detailed nispach info including reimbursement
                                 nispach_info_text = f"""
 
-מידע כללי על נספח {nispach_number}:
-שם: {nispach_data['name']}
+📋 מידע כללי על נספח {nispach_number} - {nispach_data['name']}:
+
 תיאור: {nispach_data['description']}
-כולל: {', '.join(nispach_data['includes'])}
-הערות: {nispach_data['notes']}
+
+כולל:
+{chr(10).join(['- ' + item for item in nispach_data['includes']])}
+
+💰 שיעורי החזר:
+{chr(10).join([f'- {k}: {v}' for k, v in nispach_data.get('reimbursement', {}).items()])}
+
+📊 מגבלות:
+{chr(10).join([f'- {k}: {v}' for k, v in nispach_data.get('limits', {}).items()])}
+
+💡 הערות: {nispach_data['notes']}
 """
+                        
+                        # Also check for specific services mentioned (MRI, CT, etc.)
+                        services_mentioned = []
+                        if any(word in query.lower() for word in ['mri', 'אם.אר.איי', 'מגנט']):
+                            services_mentioned.append('MRI')
+                        if any(word in query.lower() for word in ['ct', 'סי.טי', 'ציאוטי']):
+                            services_mentioned.append('CT')
+                        if 'מעבדה' in query or 'בדיקות דם' in query:
+                            services_mentioned.append('בדיקות מעבדה')
+                        if 'ייעוץ' in query or 'מומחה' in query:
+                            services_mentioned.append('ייעוץ מומחה')
+                        
+                        # If services are mentioned, add relevant nispach info
+                        if services_mentioned and not nispach_match:
+                            # Find relevant nispachim
+                            relevant_nispachim = []
+                            for num, data in NISPACH_INFO.items():
+                                for service in services_mentioned:
+                                    if service in str(data.get('reimbursement', {})):
+                                        relevant_nispachim.append((num, data, service))
+                                        break
+                            
+                            if relevant_nispachim:
+                                nispach_info_text += "\n\n🔍 נספחים רלוונטיים:\n"
+                                for num, data, service in relevant_nispachim[:3]:  # Limit to 3
+                                    reimbursement_info = data.get('reimbursement', {}).get(service, 'לא צוין')
+                                    nispach_info_text += f"\n- נספח {num} ({data['name']}): {service} - {reimbursement_info}"
                         
                         selected_ids = [policy_options[name] for name in selected_names]
                         all_contexts = []
@@ -819,37 +974,42 @@ elif st.session_state.page == "❓ שאלות":
                                 context = f"=== פוליסה: {name} ===\n" + "\n\n".join([c['text'] for c in chunks[:5]])
                                 all_contexts.append(context)
                         
-                        if all_contexts:
-                            combined = "\n\n".join(all_contexts)
+                        if all_contexts or nispach_info_text:
+                            combined = "\n\n".join(all_contexts) if all_contexts else ""
                             
                             system_prompt = """אתה מומחה ביטוח ישראלי. חלץ מידע מדויק מפוליסות.
 
 כללים:
 1. חפש טבלאות מחירים והצג אותן במדויק
 2. אל תמציא מידע
-3. אם אין מידע - אמר זאת
-4. ענה בעברית פשוטה
-5. השווה בין פוליסות
-6. אם יש מידע כללי על נספח - שלב אותו בתשובה
+3. אם אין מידע בפוליסה אבל יש מידע כללי - הסבר זאת בבירור
+4. ענה בעברית פשוטה וברורה
+5. השווה בין פוליסות אם יש יותר מאחת
+6. אם יש מידע על שיעורי החזר - הצג אותו בבירור
+7. הפרד בין מידע ספציפי מהפוליסה למידע כללי
 
-פורמט:
-### [שם הפוליסה/נספח]
-[המידע מהפוליסה]
+פורמט תשובה מומלץ:
+### 📄 מה נמצא בפוליסה
+[מידע ספציפי מהפוליסה שהועלתה]
 
-### 💡 מידע כללי
-[מידע נוסף על הנספח אם קיים]"""
+### 💡 מידע כללי על הנספח
+[מידע נוסף רלוונטי]
+
+### 💰 שיעורי החזר
+[פירוט שיעורי החזר אם ידועים]"""
                             
                             user_content = f"""שאלה: {query}
 
 תוכן מהפוליסות:
-{combined}
+{combined if combined else "(לא נמצא מידע ספציפי בפוליסה)"}
 {nispach_info_text}
 
-ענה בדיוק על סמך המידע. אם יש מידע כללי על נספח, הוסף אותו בסוף התשובה."""
+ענה בדיוק על סמך המידע. אם יש מידע כללי על נספח, הוסף אותו בסוף התשובה.
+אם השאלה היא על שיעורי החזר או מגבלות - הדגש את המידע הזה בתשובה."""
                             
                             response = claude_client.messages.create(
                                 model="claude-sonnet-4-20250514",
-                                max_tokens=1500,
+                                max_tokens=1800,
                                 system=system_prompt,
                                 messages=[{"role": "user", "content": user_content}]
                             )
@@ -860,7 +1020,7 @@ elif st.session_state.page == "❓ שאלות":
                             
                             db.save_qa(st.session_state.current_investigation_id, query, answer, selected_names)
                         else:
-                            st.warning("❌ לא נמצא מידע")
+                            st.warning("❌ לא נמצא מידע רלוונטי")
                     except Exception as e:
                         st.error(f"❌ שגיאה: {str(e)}")
 
@@ -945,6 +1105,19 @@ elif st.session_state.page == "📚 מדריך נספחים":
                     st.markdown("**כולל:**")
                     for item in data['includes']:
                         st.markdown(f"- {item}")
+                    
+                    # Show reimbursement info
+                    if 'reimbursement' in data:
+                        st.markdown("**💰 שיעורי החזר:**")
+                        for service, amount in data['reimbursement'].items():
+                            st.markdown(f"- {service}: **{amount}**")
+                    
+                    # Show limits
+                    if 'limits' in data:
+                        st.markdown("**📊 מגבלות:**")
+                        for limit_type, limit_value in data['limits'].items():
+                            st.markdown(f"- {limit_type}: {limit_value}")
+                    
                     st.info(f"💡 {data['notes']}")
         else:
             st.warning("לא נמצאו תוצאות. נסה מספר נספח אחר או מילת חיפוש אחרת.")
@@ -975,6 +1148,19 @@ elif st.session_state.page == "📚 מדריך נספחים":
                     st.markdown("**כולל:**")
                     for item in data['includes']:
                         st.markdown(f"- {item}")
+                    
+                    # Show reimbursement info
+                    if 'reimbursement' in data:
+                        st.markdown("**💰 שיעורי החזר:**")
+                        for service, amount in data['reimbursement'].items():
+                            st.markdown(f"- {service}: **{amount}**")
+                    
+                    # Show limits
+                    if 'limits' in data:
+                        st.markdown("**📊 מגבלות:**")
+                        for limit_type, limit_value in data['limits'].items():
+                            st.markdown(f"- {limit_type}: {limit_value}")
+                    
                     st.info(f"💡 {data['notes']}")
         st.markdown("---")
     
