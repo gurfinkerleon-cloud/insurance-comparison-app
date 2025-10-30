@@ -690,15 +690,15 @@ def detect_company(text):
     """Detect insurance company from PDF text with priority indicators"""
     text_lower = text.lower()
     
-    # Priority 1: Check for company-specific websites (most reliable)
+    # Priority 1: Check for company-specific websites and emails (most reliable)
     if 'fnx.co.il' in text_lower or 'myinfo.fnx' in text_lower:
         return "הפניקס"
+    elif 'clal.co.il' in text_lower or 'clalbit.co.il' in text_lower or 'bit.clal.co.il' in text_lower or '@clal-ins.co.il' in text_lower or 'clal-ins.co.il' in text_lower:
+        return "כלל"
     elif 'harel-group.co.il' in text_lower or 'hrl.co.il' in text_lower:
         return "הראל"
     elif 'migdal.co.il' in text_lower:
         return "מגדל"
-    elif 'clalbit.co.il' in text_lower or 'clal.co.il' in text_lower or 'bit.clal.co.il' in text_lower:
-        return "כלל"
     elif 'menoramivt.co.il' in text_lower:
         return "מנורה"
     elif 'ayalon-ins.co.il' in text_lower:
@@ -707,18 +707,22 @@ def detect_company(text):
     # Priority 2: Check for company phone numbers
     if '3455*' in text or '*3455' in text or '03-7332222' in text:
         return "הפניקס"
+    elif '*2800' in text or '2800*' in text or '03-6376666' in text or '077-6383290' in text or '6136902' in text:
+        return "כלל"
     elif '*2407' in text or '2407*' in text:
         return "הראל"
     elif '*2679' in text or '2679*' in text:
         return "מגדל"
-    elif '*2800' in text or '2800*' in text or '03-6376666' in text:
-        return "כלל"
     elif '*2000' in text or '2000*' in text:
         return "מנורה"
     elif '*5620' in text or '5620*' in text:
         return "איילון"
     
-    # Priority 3: Check for company names (less reliable)
+    # Priority 3: Check for unique company identifiers
+    if 'כלל חברה לביטוח' in text or 'כלל תכנית הגריאטריות' in text or 'ביטוח וסיכונים' in text:
+        return "כלל"
+    
+    # Priority 4: Check for company names (less reliable)
     if 'פניקס' in text or 'הפניקס' in text or 'phoenix' in text_lower or 'fnx' in text_lower:
         return "הפניקס"
     elif 'כלל ביטוח' in text or 'clalbit' in text_lower or 'clal insurance' in text_lower:
