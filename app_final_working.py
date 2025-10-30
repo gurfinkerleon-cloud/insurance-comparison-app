@@ -643,30 +643,95 @@ class Database:
             (inv_id,)).fetchall()
 
 def extract_text_from_pdf(pdf_file):
-    if not PDF_SUPPORT: return "", 0
+    """Extract text from PDF with improved handling for different formats"""
+    if not PDF_SUPPORT: 
+        return "❌ PDF support not available", 0
+    
     try:
         text = ""
+        page_count = 0
+        
         with pdfplumber.open(pdf_file) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text: text += page_text + "\n\n---PAGE_BREAK---\n\n"
-        return text, len(pdf.pages)
-    except: return "", 0
+            page_count = len(pdf.pages)
+            
+            for i, page in enumerate(pdf.pages):
+                try:
+                    # Try extracting text
+                    page_text = page.extract_text()
+                    
+                    # If no text, try extracting tables
+                    if not page_text or len(page_text.strip()) < 20:
+                        tables = page.extract_tables()
+                        if tables:
+                            page_text = ""
+                            for table in tables:
+                                for row in table:
+                                    if row:
+                                        page_text += " | ".join([str(cell) if cell else "" for cell in row]) + "\n"
+                    
+                    if page_text:
+                        text += f"=== עמוד {i+1} ===\n{page_text}\n\n---PAGE_BREAK---\n\n"
+                    else:
+                        text += f"=== עמוד {i+1} ===\n[לא נמצא טקסט בעמוד זה]\n\n---PAGE_BREAK---\n\n"
+                        
+                except Exception as page_error:
+                    text += f"=== עמוד {i+1} ===\n[שגיאה בחילוץ עמוד: {str(page_error)}]\n\n---PAGE_BREAK---\n\n"
+        
+        # Check if we extracted meaningful content
+        if len(text.strip()) < 100:
+            return "⚠️ לא הצלחנו לחלץ טקסט מספיק מה-PDF. ייתכן שהוא מבוסס תמונות או בפורמט לא נתמך.", page_count
+        
+        return text, page_count
+        
+    except Exception as e:
+        return f"❌ שגיאה בקריאת PDF: {str(e)}", 0
 
 def detect_company(text):
+    """Detect insurance company from PDF text with priority indicators"""
     text_lower = text.lower()
-    if 'מגדל' in text or 'migdal' in text_lower:
+    
+    # Priority 1: Check for company-specific websites (most reliable)
+    if 'fnx.co.il' in text_lower or 'myinfo.fnx' in text_lower:
+        return "הפניקס"
+    elif 'harel-group.co.il' in text_lower or 'hrl.co.il' in text_lower:
+        return "הראל"
+    elif 'migdal.co.il' in text_lower:
         return "מגדל"
+    elif 'clalbit.co.il' in text_lower or 'clal.co.il' in text_lower or 'bit.clal.co.il' in text_lower:
+        return "כלל"
+    elif 'menoramivt.co.il' in text_lower:
+        return "מנורה"
+    elif 'ayalon-ins.co.il' in text_lower:
+        return "איילון"
+    
+    # Priority 2: Check for company phone numbers
+    if '3455*' in text or '*3455' in text or '03-7332222' in text:
+        return "הפניקס"
+    elif '*2407' in text or '2407*' in text:
+        return "הראל"
+    elif '*2679' in text or '2679*' in text:
+        return "מגדל"
+    elif '*2800' in text or '2800*' in text or '03-6376666' in text:
+        return "כלל"
+    elif '*2000' in text or '2000*' in text:
+        return "מנורה"
+    elif '*5620' in text or '5620*' in text:
+        return "איילון"
+    
+    # Priority 3: Check for company names (less reliable)
+    if 'פניקס' in text or 'הפניקס' in text or 'phoenix' in text_lower or 'fnx' in text_lower:
+        return "הפניקס"
+    elif 'כלל ביטוח' in text or 'clalbit' in text_lower or 'clal insurance' in text_lower:
+        return "כלל"
     elif 'הראל' in text or 'harel' in text_lower:
         return "הראל"
-    elif 'כלל' in text or 'clal' in text_lower:
-        return "כלל"
-    elif 'מנורה' in text or 'menora' in text_lower:
+    elif 'מגדל' in text or 'migdal' in text_lower:
+        return "מגדל"
+    elif 'מנורה' in text or 'menora' in text_lower or 'מנורה מבטחים' in text:
         return "מנורה"
-    elif 'פניקס' in text or 'phoenix' in text_lower:
-        return "הפניקס"
-    elif 'איילון' in text:
+    elif 'איילון' in text or 'ayalon' in text_lower:
         return "איילון"
+    
     return None
 
 def create_chunks(text, size=1500, overlap=300):
@@ -1047,61 +1112,75 @@ elif st.session_state.page == "📤 העלאה":
     
     if uploaded_file:
         with st.spinner("מעבד..."):
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-                tmp.write(uploaded_file.getvalue())
-                tmp_path = tmp.name
-            
-            text, total_pages = extract_text_from_pdf(tmp_path)
-            
-            if text:
-                detected_company = detect_company(text)
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
+                    tmp.write(uploaded_file.getvalue())
+                    tmp_path = tmp.name
                 
-                if detected_company:
-                    count = db.get_company_count(st.session_state.current_investigation_id, detected_company)
-                    if count == 0:
-                        auto_name = detected_company
-                    else:
-                        auto_name = f"{detected_company} {count + 1}"
+                text, total_pages = extract_text_from_pdf(tmp_path)
+                
+                # Check if extraction failed
+                if not text or text.startswith("❌") or text.startswith("⚠️"):
+                    st.error(text if text else "לא הצלחנו לקרוא את הקובץ")
+                    st.warning("💡 טיפים:")
+                    st.markdown("""
+                    - ודא שהקובץ אינו מוגן בסיסמה
+                    - ודא שהקובץ מכיל טקסט (לא רק תמונות)
+                    - נסה לשמור את הקובץ מחדש מהמקור
+                    """)
+                    os.unlink(tmp_path)
                 else:
-                    auto_name = uploaded_file.name.replace('.pdf', '').replace('-', ' ')
-                
-                st.success(f"✅ זוהתה חברה: **{detected_company or 'לא זוהה'}**")
-                
-                with st.form("form"):
-                    company = st.selectbox("חברה", COMPANIES, 
-                                          index=COMPANIES.index(detected_company) if detected_company in COMPANIES else 0)
-                    custom_name = st.text_input("שם הפוליסה", value=auto_name,
-                                               help="השם שיוצג ברשימה")
-                    st.info(f"📄 {total_pages} עמודים")
+                    detected_company = detect_company(text)
                     
-                    if st.form_submit_button("💾 שמור", type="primary"):
-                        safe_filename = f"{company}_{uuid.uuid4().hex[:8]}.pdf"
-                        final_path = os.path.join(UPLOAD_DIR, safe_filename)
-                        shutil.copy2(tmp_path, final_path)
+                    if detected_company:
+                        count = db.get_company_count(st.session_state.current_investigation_id, detected_company)
+                        if count == 0:
+                            auto_name = detected_company
+                        else:
+                            auto_name = f"{detected_company} {count + 1}"
+                    else:
+                        auto_name = uploaded_file.name.replace('.pdf', '').replace('-', ' ')
+                    
+                    st.success(f"✅ זוהתה חברה: **{detected_company or 'לא זוהה'}**")
+                    st.info(f"📄 {total_pages} עמודים | {len(text)} תווים")
+                    
+                    with st.form("form"):
+                        company = st.selectbox("חברה", COMPANIES, 
+                                              index=COMPANIES.index(detected_company) if detected_company in COMPANIES else 0)
+                        custom_name = st.text_input("שם הפוליסה", value=auto_name,
+                                                   help="השם שיוצג ברשימה")
                         
-                        chunks = create_chunks(text)
-                        
-                        policy_id = db.insert_policy(
-                            st.session_state.current_investigation_id,
-                            company,
-                            uploaded_file.name,
-                            custom_name,
-                            final_path,
-                            total_pages
-                        )
-                        db.insert_chunks(policy_id, chunks)
-                        
-                        st.success(f"✅ נשמר: **{custom_name}**")
-                        st.balloons()
-                        
-                        try: os.unlink(tmp_path)
-                        except: pass
-                        
-                        st.rerun()
-            else:
-                st.error("❌ לא ניתן לחלץ טקסט")
-                try: os.unlink(tmp_path)
-                except: pass
+                        if st.form_submit_button("💾 שמור", type="primary"):
+                            safe_filename = f"{company}_{uuid.uuid4().hex[:8]}.pdf"
+                            final_path = os.path.join(UPLOAD_DIR, safe_filename)
+                            shutil.copy2(tmp_path, final_path)
+                            
+                            chunks = create_chunks(text)
+                            
+                            policy_id = db.insert_policy(
+                                st.session_state.current_investigation_id,
+                                company,
+                                uploaded_file.name,
+                                custom_name,
+                                final_path,
+                                total_pages
+                            )
+                            db.insert_chunks(policy_id, chunks)
+                            
+                            st.success(f"✅ נשמר: **{custom_name}**")
+                            st.balloons()
+                            
+                            try: os.unlink(tmp_path)
+                            except: pass
+                            
+                            st.rerun()
+            
+            except Exception as e:
+                st.error(f"❌ שגיאה בעיבוד הקובץ: {str(e)}")
+                try: 
+                    os.unlink(tmp_path)
+                except: 
+                    pass
     
     st.markdown("---")
     
@@ -1229,15 +1308,20 @@ elif st.session_state.page == "❓ שאלות":
 כללים:
 1. חפש טבלאות מחירים והצג אותן במדויק
 2. אל תמציא מידע
-3. אם אין מידע בפוליסה אבל יש מידע כללי - הסבר זאת בבירור
-4. ענה בעברית פשוטה וברורה
-5. השווה בין פוליסות אם יש יותר מאחת
-6. אם יש מידע על שיעורי החזר - הצג אותו בבירור
-7. הפרד בין מידע ספציפי מהפוליסה למידע כללי
+3. **אם השאלה היא "איזו פוליסה זו?" או "מה זה?" - תן תשובה ברורה ומדויקת על הפוליסה הספציפית**
+4. אם אין מידע בפוליסה אבל יש מידע כללי - הסבר זאת בבירור
+5. ענה בעברית פשוטה וברורה
+6. השווה בין פוליסות אם יש יותר מאחת
+7. אם יש מידע על שיעורי החזר - הצג אותו בבירור
+8. הפרד בין מידע ספציפי מהפוליסה למידע כללי
+
+**חשוב במיוחד:**
+- אם שואלים "איזו פוליסה זו?" - זהה את שם הפוליסה, מספר הפוליסה, חברת הביטוח והנספחים
+- אם שואלים על נספח ספציפי - אשר שהוא קיים בפוליסה ותן פרטים ממנה
 
 פורמט תשובה מומלץ:
 ### 📄 מה נמצא בפוליסה
-[מידע ספציפי מהפוליסה שהועלתה]
+[מידע ספציפי מהפוליסה שהועלתה - כולל מספר פוליסה, חברה, נספחים]
 
 ### 💡 מידע כללי על הנספח
 [מידע נוסף רלוונטי]
