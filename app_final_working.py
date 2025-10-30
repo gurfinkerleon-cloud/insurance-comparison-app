@@ -45,6 +45,52 @@ COMPANIES = ["הראל", "מגדל", "כלל", "מנורה", "הפניקס", "א
 UPLOAD_DIR = "policy_uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Insurance Companies General Information
+COMPANIES_INFO = {
+    "הראל": {
+        "full_name": "הראל חברה לביטוח בע\"מ",
+        "website": "www.harel-group.co.il",
+        "phone": "*2407",
+        "strengths": ["חברה גדולה ומובילה", "שירות לקוחות טוב", "רשת רחבה של נותני שירות"],
+        "known_for": ["ביטוח בריאות מקיף", "מוצרי פנסיה", "חיסכון והשקעות"]
+    },
+    "מגדל": {
+        "full_name": "מגדל חברה לביטוח בע\"מ",
+        "website": "www.migdal.co.il",
+        "phone": "*2679",
+        "strengths": ["חברת ביטוח ופיננסים מובילה", "מגוון רחב של מוצרים", "דיגיטציה מתקדמת"],
+        "known_for": ["ביטוח חיים ובריאות", "קרנות פנסיה", "ניהול תיקים"]
+    },
+    "כלל": {
+        "full_name": "כלל חברה לביטוח בע\"מ",
+        "website": "www.clalbit.co.il",
+        "phone": "*2800",
+        "strengths": ["חדשנות דיגיטלית", "מוצרים ייחודיים", "שירות מהיר"],
+        "known_for": ["ביטוח בריאות", "ביטוח רכב", "ביטוח דירה"]
+    },
+    "מנורה": {
+        "full_name": "מנורה מבטחים ביטוח בע\"מ",
+        "website": "www.menoramivt.co.il",
+        "phone": "*2000",
+        "strengths": ["אחת הגדולות בישראל", "יציבות פיננסית", "מוניטין ותיק"],
+        "known_for": ["ביטוח חיים ובריאות", "פנסיה", "חיסכון לטווח ארוך"]
+    },
+    "הפניקס": {
+        "full_name": "הפניקס הישראלי חברה לביטוח בע\"מ",
+        "website": "www.fnx.co.il",
+        "phone": "*6836",
+        "strengths": ["חדשנות", "מוצרים מותאמים אישית", "שירות דיגיטלי"],
+        "known_for": ["ביטוח בריאות", "ביטוח חיים", "פנסיה"]
+    },
+    "איילון": {
+        "full_name": "איילון חברה לביטוח בע\"מ",
+        "website": "www.ayalon-ins.co.il",
+        "phone": "*5620",
+        "strengths": ["חברת ביטוח כללי", "מחירים תחרותיים", "שירות אישי"],
+        "known_for": ["ביטוח רכב", "ביטוח בריאות", "ביטוח דירה"]
+    }
+}
+
 # Nispach (Appendix) Information Database
 NISPACH_INFO = {
     "8713": {
@@ -892,21 +938,31 @@ elif st.session_state.page == "📤 העלאה":
 
 elif st.session_state.page == "❓ שאלות":
     st.title("❓ שאלות")
-    policies = db.get_policies(st.session_state.current_investigation_id)
     
-    if not policies:
-        st.warning("⚠️ העלה פוליסות")
-    else:
-        policy_options = {pol['custom_name']: pol['id'] for pol in policies}
-        selected_names = st.multiselect("בחר פוליסות:", list(policy_options.keys()), 
-                                       default=list(policy_options.keys()))
+    # Mode selector
+    mode = st.radio(
+        "בחר סוג שאלה:",
+        ["📄 שאל על הפוליסות שלי", "🌐 מידע כללי על ביטוחים"],
+        horizontal=True
+    )
+    
+    if mode == "📄 שאל על הפוליסות שלי":
+        # Original functionality - questions about uploaded policies
+        policies = db.get_policies(st.session_state.current_investigation_id)
         
-        if selected_names:
-            query = st.text_area("שאל שאלה:", 
-                                placeholder="למשל: מה המחיר החודשי לגיל 30?",
-                                height=100)
+        if not policies:
+            st.warning("⚠️ העלה פוליסות")
+        else:
+            policy_options = {pol['custom_name']: pol['id'] for pol in policies}
+            selected_names = st.multiselect("בחר פוליסות:", list(policy_options.keys()), 
+                                           default=list(policy_options.keys()))
             
-            if st.button("🔍 שאל", type="primary") and query and claude_client:
+            if selected_names:
+                query = st.text_area("שאל שאלה:", 
+                                    placeholder="למשל: מה המחיר החודשי לגיל 30?",
+                                    height=100)
+                
+                if st.button("🔍 שאל", type="primary") and query and claude_client:
                 with st.spinner("מחפש ומנתח..."):
                     try:
                         # Check if question is about a specific nispach
@@ -1023,6 +1079,122 @@ elif st.session_state.page == "❓ שאלות":
                             st.warning("❌ לא נמצא מידע רלוונטי")
                     except Exception as e:
                         st.error(f"❌ שגיאה: {str(e)}")
+    
+    else:  # General information mode
+        st.info("💡 **במצב זה אתה יכול לשאול שאלות כלליות על ביטוחים ללא צורך בפוליסות**")
+        
+        # Optional: Select specific companies to compare
+        with st.expander("🏢 השווה חברות ספציפיות (אופציונלי)"):
+            selected_companies = st.multiselect(
+                "בחר חברות להשוואה:",
+                COMPANIES,
+                help="השאר ריק לשאלה כללית על כל השוק"
+            )
+        
+        # Example questions
+        with st.expander("📝 דוגמאות לשאלות"):
+            st.markdown("""
+            - מה ההבדל בין מגדל להראל בביטוח בריאות?
+            - כמה עולה ביטוח בריאות מקיף לגיל 35?
+            - מה הכיסויים החשובים ביותר בביטוח בריאות?
+            - האם כדאי להוסיף נספח ניתוחים בחו״ל?
+            - מהן החברות עם השירות הטוב ביותר?
+            - השוואת מחירים בין החברות הגדולות
+            - מה זה נספח אמבולטורי ולמה אני צריך אותו?
+            """)
+        
+        query = st.text_area(
+            "שאל שאלה כללית:",
+            placeholder="לדוגמה: מה ההבדל בין מגדל להראל?",
+            height=100
+        )
+        
+        if st.button("🔍 שאל", type="primary") and query and claude_client:
+            with st.spinner("מחפש מידע..."):
+                try:
+                    # Build context with company info if specific companies selected
+                    company_context = ""
+                    if selected_companies:
+                        company_context = "\n\nמידע על החברות שנבחרו:\n"
+                        for company in selected_companies:
+                            if company in COMPANIES_INFO:
+                                info = COMPANIES_INFO[company]
+                                company_context += f"""
+\n{company} ({info['full_name']}):
+- אתר: {info['website']}
+- טלפון: {info['phone']}
+- יתרונות: {', '.join(info['strengths'])}
+- ידועה ב: {', '.join(info['known_for'])}
+"""
+                    
+                    # Add nispach info if question mentions specific nispach
+                    import re
+                    nispach_match = re.search(r'נספח\s*(\d+[/-]?\d*)', query)
+                    nispach_context = ""
+                    
+                    if nispach_match:
+                        nispach_number = nispach_match.group(1)
+                        nispach_data = get_nispach_info(nispach_number)
+                        if nispach_data:
+                            nispach_context = f"""
+\nמידע על נספח {nispach_number} - {nispach_data['name']}:
+תיאור: {nispach_data['description']}
+כולל: {', '.join(nispach_data['includes'])}
+שיעורי החזר: {', '.join([f'{k}: {v}' for k, v in nispach_data.get('reimbursement', {}).items()])}
+מגבלות: {', '.join([f'{k}: {v}' for k, v in nispach_data.get('limits', {}).items()])}
+"""
+                    
+                    # Check for service mentions
+                    services_context = ""
+                    if any(word in query.lower() for word in ['mri', 'ct', 'בדיקה', 'ייעוץ', 'טיפול']):
+                        services_context = "\n\nמידע נוסף מבסיס הנתונים שלנו:\n"
+                        for num, data in list(NISPACH_INFO.items())[:5]:  # Top 5 relevant
+                            services_context += f"- נספח {num} ({data['name']}): {data['description']}\n"
+                    
+                    system_prompt = """אתה יועץ ביטוח מקצועי ישראלי. תפקידך לספק מידע כללי ומקצועי על ביטוחים.
+
+כללים:
+1. ספק מידע מבוסס על הידע שלך ועל המידע שנמסר לך
+2. אם מדובר בהשוואה בין חברות - היה אובייקטיבי
+3. הסבר מושגים בצורה פשוטה וברורה
+4. ציין אם המידע הוא כללי או משתנה בין חברות
+5. המלץ תמיד לבדוק עם חברת הביטוח את הפרטים המדויקים
+6. אם יש מידע על מחירים - תן טווחים כלליים
+7. הדגש את הנקודות החשובות ביותר
+
+פורמט תשובה מומלץ:
+### 📋 תשובה
+[תשובה ישירה לשאלה]
+
+### 💡 מידע נוסף
+[פרטים רלוונטיים נוספים]
+
+### ⚠️ חשוב לזכור
+[נקודות חשובות להתייחסות]"""
+                    
+                    user_content = f"""שאלה: {query}
+{company_context}
+{nispach_context}
+{services_context}
+
+ענה על השאלה בצורה מקצועית ומפורטת. אם יש מידע ספציפי על חברות או נספחים - שלב אותו בתשובה."""
+                    
+                    response = claude_client.messages.create(
+                        model="claude-sonnet-4-20250514",
+                        max_tokens=2000,
+                        system=system_prompt,
+                        messages=[{"role": "user", "content": user_content}]
+                    )
+                    
+                    answer = response.content[0].text
+                    st.markdown("### 💡 תשובה:")
+                    st.success(answer)
+                    
+                    # Save to history with special marker for general questions
+                    db.save_qa(st.session_state.current_investigation_id, query, answer, ["מידע כללי"])
+                    
+                except Exception as e:
+                    st.error(f"❌ שגיאה: {str(e)}")
 
 elif st.session_state.page == "⚖️ השוואה":
     st.title("⚖️ השוואה")
