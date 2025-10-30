@@ -22,10 +22,61 @@ st.set_page_config(page_title="השוואת פוליסות", page_icon="📄", l
 
 st.markdown("""
 <style>
-    .main .block-container { direction: rtl; text-align: right; }
-    .stButton>button { width: 100%; }
-    .stTextInput>div>div>input, .stTextArea>div>div>textarea { text-align: right; }
-    h1, h2, h3 { text-align: right; }
+    /* Global RTL for all content */
+    .main .block-container { 
+        direction: rtl !important; 
+        text-align: right !important; 
+    }
+    
+    /* All text elements */
+    .stMarkdown, .stMarkdown p, .stMarkdown div, .stMarkdown li, .stMarkdown ul, .stMarkdown ol {
+        direction: rtl !important;
+        text-align: right !important;
+    }
+    
+    /* Info boxes */
+    .stAlert, .stInfo, .stSuccess, .stWarning, .stError {
+        direction: rtl !important;
+        text-align: right !important;
+    }
+    
+    /* Expanders */
+    .streamlit-expanderHeader, [data-testid="stExpander"] {
+        direction: rtl !important;
+        text-align: right !important;
+    }
+    
+    [data-testid="stExpander"] > details > summary {
+        text-align: right !important;
+        direction: rtl !important;
+    }
+    
+    [data-testid="stExpander"] > details > div {
+        text-align: right !important;
+        direction: rtl !important;
+    }
+    
+    /* Text inputs and textareas */
+    .stTextInput>div>div>input, .stTextArea>div>div>textarea { 
+        text-align: right !important; 
+        direction: rtl !important;
+    }
+    
+    /* Headers */
+    h1, h2, h3, h4, h5, h6 { 
+        text-align: right !important; 
+        direction: rtl !important;
+    }
+    
+    /* Buttons */
+    .stButton>button { 
+        width: 100%; 
+    }
+    
+    /* All paragraphs and divs */
+    p, div, span, label {
+        direction: rtl !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -850,16 +901,6 @@ if st.session_state.page == "🏠 בית":
                 st.caption(f"נוצר: {inv['created_at']}")
 
 elif st.session_state.page == "📥 איך להשיג פוליסות":
-    st.markdown("""<style>
-        .main .block-container { direction: rtl !important; text-align: right !important; }
-        .stMarkdown, .stInfo, .stSuccess, .stWarning { text-align: right !important; direction: rtl !important; }
-        .stMarkdown p, .stMarkdown ul, .stMarkdown ol { text-align: right !important; direction: rtl !important; }
-        .stExpander { direction: rtl !important; text-align: right !important; }
-        [data-testid="stExpander"] { direction: rtl !important; }
-        [data-testid="stExpander"] > details > summary { text-align: right !important; }
-        [data-testid="stExpander"] > details > div { text-align: right !important; direction: rtl !important; }
-    </style>""", unsafe_allow_html=True)
-    
     st.title("📥 איך להשיג את הפוליסות שלך")
     st.write("מדריך פשוט לקבלת פוליסות מכל חברות הביטוח")
     
@@ -1400,16 +1441,6 @@ elif st.session_state.page == "⚖️ השוואה":
                         st.error(f"❌ {str(e)}")
 
 elif st.session_state.page == "📚 מדריך נספחים":
-    st.markdown("""<style>
-        .main .block-container { direction: rtl !important; text-align: right !important; }
-        .stMarkdown, .stInfo, .stSuccess, .stWarning, .stError { text-align: right !important; direction: rtl !important; }
-        .stMarkdown p, .stMarkdown ul, .stMarkdown ol, .stMarkdown li { text-align: right !important; direction: rtl !important; }
-        .stExpander { direction: rtl !important; text-align: right !important; }
-        [data-testid="stExpander"] { direction: rtl !important; }
-        [data-testid="stExpander"] > details > summary { text-align: right !important; }
-        [data-testid="stExpander"] > details > div { text-align: right !important; direction: rtl !important; }
-    </style>""", unsafe_allow_html=True)
-    
     st.title("📚 מדריך נספחים - מה כל נספח מכסה?")
     st.write("מידע מפורט על נספחים נפוצים בפוליסות ביטוח בריאות")
     
