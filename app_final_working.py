@@ -850,6 +850,16 @@ if st.session_state.page == "🏠 בית":
                 st.caption(f"נוצר: {inv['created_at']}")
 
 elif st.session_state.page == "📥 איך להשיג פוליסות":
+    st.markdown("""<style>
+        .main .block-container { direction: rtl !important; text-align: right !important; }
+        .stMarkdown, .stInfo, .stSuccess, .stWarning { text-align: right !important; direction: rtl !important; }
+        .stMarkdown p, .stMarkdown ul, .stMarkdown ol { text-align: right !important; direction: rtl !important; }
+        .stExpander { direction: rtl !important; text-align: right !important; }
+        [data-testid="stExpander"] { direction: rtl !important; }
+        [data-testid="stExpander"] > details > summary { text-align: right !important; }
+        [data-testid="stExpander"] > details > div { text-align: right !important; direction: rtl !important; }
+    </style>""", unsafe_allow_html=True)
+    
     st.title("📥 איך להשיג את הפוליסות שלך")
     st.write("מדריך פשוט לקבלת פוליסות מכל חברות הביטוח")
     
@@ -1390,6 +1400,16 @@ elif st.session_state.page == "⚖️ השוואה":
                         st.error(f"❌ {str(e)}")
 
 elif st.session_state.page == "📚 מדריך נספחים":
+    st.markdown("""<style>
+        .main .block-container { direction: rtl !important; text-align: right !important; }
+        .stMarkdown, .stInfo, .stSuccess, .stWarning, .stError { text-align: right !important; direction: rtl !important; }
+        .stMarkdown p, .stMarkdown ul, .stMarkdown ol, .stMarkdown li { text-align: right !important; direction: rtl !important; }
+        .stExpander { direction: rtl !important; text-align: right !important; }
+        [data-testid="stExpander"] { direction: rtl !important; }
+        [data-testid="stExpander"] > details > summary { text-align: right !important; }
+        [data-testid="stExpander"] > details > div { text-align: right !important; direction: rtl !important; }
+    </style>""", unsafe_allow_html=True)
+    
     st.title("📚 מדריך נספחים - מה כל נספח מכסה?")
     st.write("מידע מפורט על נספחים נפוצים בפוליסות ביטוח בריאות")
     
