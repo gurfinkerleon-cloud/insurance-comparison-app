@@ -358,6 +358,16 @@ class Database:
             password_hash TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
         
+        # Password reset codes
+        cur.execute("""CREATE TABLE IF NOT EXISTS password_resets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            reset_code TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP,
+            used INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(id))""")
+        
         # Investigations (now with user_id)
         cur.execute("""CREATE TABLE IF NOT EXISTS investigations (
             id TEXT PRIMARY KEY,
@@ -424,6 +434,64 @@ class Database:
     def get_user_by_id(self, user_id):
         """Get user info by ID"""
         return self.conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    
+    def get_user_by_email(self, email):
+        """Get user by email"""
+        return self.conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    
+    def create_reset_code(self, email):
+        """Create password reset code for user"""
+        import random
+        from datetime import datetime, timedelta
+        
+        user = self.get_user_by_email(email)
+        if not user:
+            return None, "אימייל לא נמצא במערכת"
+        
+        # Generate 6-digit code
+        reset_code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+        
+        # Set expiration (15 minutes from now)
+        expires_at = datetime.now() + timedelta(minutes=15)
+        
+        self.conn.execute(
+            "INSERT INTO password_resets (user_id, reset_code, expires_at) VALUES (?, ?, ?)",
+            (user['id'], reset_code, expires_at)
+        )
+        self.conn.commit()
+        
+        return reset_code, None
+    
+    def verify_reset_code(self, email, code):
+        """Verify reset code is valid"""
+        from datetime import datetime
+        
+        user = self.get_user_by_email(email)
+        if not user:
+            return False, "אימייל לא נמצא"
+        
+        reset = self.conn.execute("""
+            SELECT * FROM password_resets 
+            WHERE user_id = ? AND reset_code = ? AND used = 0 AND expires_at > ?
+            ORDER BY created_at DESC LIMIT 1
+        """, (user['id'], code, datetime.now())).fetchone()
+        
+        if not reset:
+            return False, "קוד שגוי או פג תוקף"
+        
+        return True, user['id']
+    
+    def reset_password(self, user_id, new_password, reset_code):
+        """Reset user password"""
+        # Mark code as used
+        self.conn.execute("UPDATE password_resets SET used = 1 WHERE reset_code = ?", (reset_code,))
+        
+        # Update password
+        password_hash = hash_password(new_password)
+        self.conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+        self.conn.commit()
+        
+        return True
     
     # Investigation management (filtered by user)
     def create_investigation(self, user_id, client_name, description=None):
@@ -574,7 +642,7 @@ db, claude_client = init_connections()
 if not st.session_state.authenticated:
     st.title("🔐 השוואת פוליסות ביטוח")
     
-    tab1, tab2 = st.tabs(["🔑 כניסה", "✨ הרשמה"])
+    tab1, tab2, tab3 = st.tabs(["🔑 כניסה", "✨ הרשמה", "🔓 שכחתי סיסמה"])
     
     with tab1:
         st.subheader("כניסה למערכת")
@@ -619,6 +687,78 @@ if not st.session_state.authenticated:
                         st.success("נרשמת בהצלחה! עבור ללשונית 'כניסה'")
                     else:
                         st.error(error)
+    
+    with tab3:
+        st.subheader("איפוס סיסמה")
+        
+        # Initialize reset state
+        if 'reset_step' not in st.session_state:
+            st.session_state.reset_step = 1
+        if 'reset_email' not in st.session_state:
+            st.session_state.reset_email = None
+        if 'reset_code_generated' not in st.session_state:
+            st.session_state.reset_code_generated = None
+        
+        if st.session_state.reset_step == 1:
+            # Step 1: Enter email
+            st.write("הזן את כתובת האימייל שלך לקבלת קוד איפוס")
+            
+            with st.form("reset_email_form"):
+                reset_email = st.text_input("אימייל")
+                send_code = st.form_submit_button("שלח קוד", type="primary", use_container_width=True)
+                
+                if send_code:
+                    if reset_email:
+                        code, error = db.create_reset_code(reset_email)
+                        if code:
+                            st.session_state.reset_code_generated = code
+                            st.session_state.reset_email = reset_email
+                            st.session_state.reset_step = 2
+                            st.success(f"✅ קוד נשלח!")
+                            st.info(f"🔢 **קוד האיפוס שלך:** {code}")
+                            st.caption("(במציאות יישלח למייל - זה רק לדמו)")
+                            st.rerun()
+                        else:
+                            st.error(error)
+                    else:
+                        st.warning("נא להזין אימייל")
+        
+        elif st.session_state.reset_step == 2:
+            # Step 2: Enter code and new password
+            st.write(f"קוד נשלח ל: **{st.session_state.reset_email}**")
+            st.info(f"🔢 הקוד שלך: **{st.session_state.reset_code_generated}**")
+            
+            with st.form("reset_password_form"):
+                reset_code_input = st.text_input("קוד איפוס (6 ספרות)")
+                new_pass = st.text_input("סיסמה חדשה", type="password")
+                new_pass_confirm = st.text_input("אישור סיסמה חדשה", type="password")
+                reset_submit = st.form_submit_button("אפס סיסמה", type="primary", use_container_width=True)
+                
+                if reset_submit:
+                    if not all([reset_code_input, new_pass, new_pass_confirm]):
+                        st.warning("נא למלא את כל השדות")
+                    elif new_pass != new_pass_confirm:
+                        st.error("הסיסמאות לא תואמות")
+                    elif len(new_pass) < 6:
+                        st.error("הסיסמה חייבת להכיל לפחות 6 תווים")
+                    else:
+                        valid, user_id = db.verify_reset_code(st.session_state.reset_email, reset_code_input)
+                        if valid:
+                            db.reset_password(user_id, new_pass, reset_code_input)
+                            st.success("✅ הסיסמה אופסה בהצלחה!")
+                            st.info("עבור ללשונית 'כניסה' כדי להתחבר")
+                            # Reset state
+                            st.session_state.reset_step = 1
+                            st.session_state.reset_email = None
+                            st.session_state.reset_code_generated = None
+                        else:
+                            st.error(user_id)  # Error message
+            
+            if st.button("ביטול", use_container_width=True):
+                st.session_state.reset_step = 1
+                st.session_state.reset_email = None
+                st.session_state.reset_code_generated = None
+                st.rerun()
     
     st.stop()
 
