@@ -7,6 +7,7 @@ import os
 from supabase import create_client, Client
 import uuid
 from typing import Optional, Tuple
+import re
 
 
 class SupabaseStorage:
@@ -37,6 +38,25 @@ class SupabaseStorage:
             except Exception as e:
                 print(f"Note: Could not create bucket (may already exist): {e}")
     
+    def sanitize_filename(self, filename: str) -> str:
+        """
+        Sanitize filename to remove problematic characters
+        
+        Args:
+            filename: Original filename
+            
+        Returns:
+            Sanitized filename safe for storage
+        """
+        # Remove or replace problematic characters
+        # Keep only alphanumeric, Hebrew letters, hyphens, underscores, and dots
+        sanitized = re.sub(r'[^\w\u0590-\u05FF._-]', '_', filename)
+        # Remove multiple consecutive underscores
+        sanitized = re.sub(r'_+', '_', sanitized)
+        # Remove leading/trailing underscores
+        sanitized = sanitized.strip('_')
+        return sanitized
+    
     def upload_pdf(self, file_bytes: bytes, investigation_id: str, company: str, 
                    original_filename: str) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -46,12 +66,15 @@ class SupabaseStorage:
             (file_path, error_message)
         """
         try:
-           # Generate unique filename (sanitize company name)
-file_extension = os.path.splitext(original_filename)[1]
-unique_id = str(uuid.uuid4())[:8]
-# Remove special characters from company name
-safe_company = company.replace("/", "_").replace("\\", "_").replace(" ", "_")
-file_name = f"{investigation_id}/{safe_company}_{unique_id}{file_extension}"
+            # Generate unique filename with sanitized company name
+            file_extension = os.path.splitext(original_filename)[1]
+            unique_id = str(uuid.uuid4())[:8]
+            
+            # Sanitize company name to avoid problematic characters
+            safe_company = self.sanitize_filename(company)
+            
+            # Create file path
+            file_name = f"{investigation_id}/{safe_company}_{unique_id}{file_extension}"
             
             # Upload file
             result = self.client.storage.from_(self.bucket_name).upload(
