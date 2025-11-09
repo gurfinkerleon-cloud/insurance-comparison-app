@@ -1,6 +1,8 @@
 import streamlit as st
-import sqlite3
+# import sqlite3  # ❌ Comentado - ya no se usa
 from anthropic import Anthropic
+from modules.database_supabase import SupabaseDatabase
+from modules.storage_supabase import SupabaseStorage
 import os
 from dotenv import load_dotenv
 import tempfile
@@ -392,257 +394,7 @@ def hash_password(password):
     """Hash password using SHA256"""
     return hashlib.sha256(password.encode()).hexdigest()
 
-class Database:
-    def __init__(self):
-        self.conn = sqlite3.connect("insurance.db", check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.create_tables()
-    
-    def create_tables(self):
-        cur = self.conn.cursor()
-        
-        # Users table
-        cur.execute("""CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
-        
-        # Password reset codes
-        cur.execute("""CREATE TABLE IF NOT EXISTS password_resets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            reset_code TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            expires_at TIMESTAMP,
-            used INTEGER DEFAULT 0,
-            FOREIGN KEY (user_id) REFERENCES users(id))""")
-        
-        # Investigations (now with user_id)
-        cur.execute("""CREATE TABLE IF NOT EXISTS investigations (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            client_name TEXT NOT NULL,
-            description TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)""")
-        
-        cur.execute("""CREATE TABLE IF NOT EXISTS policies (
-            id TEXT PRIMARY KEY,
-            investigation_id TEXT NOT NULL,
-            company TEXT,
-            file_name TEXT NOT NULL,
-            custom_name TEXT,
-            file_path TEXT,
-            total_pages INTEGER,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (investigation_id) REFERENCES investigations(id) ON DELETE CASCADE)""")
-        
-        cur.execute("""CREATE TABLE IF NOT EXISTS policy_chunks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            policy_id TEXT NOT NULL,
-            chunk_text TEXT NOT NULL,
-            FOREIGN KEY (policy_id) REFERENCES policies(id) ON DELETE CASCADE)""")
-        
-        cur.execute("""CREATE TABLE IF NOT EXISTS qa_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            investigation_id TEXT NOT NULL,
-            question TEXT NOT NULL,
-            answer TEXT NOT NULL,
-            policy_names TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (investigation_id) REFERENCES investigations(id) ON DELETE CASCADE)""")
-        
-        self.conn.commit()
-    
-    # User management
-    def create_user(self, username, email, password):
-        """Create new user"""
-        try:
-            user_id = str(uuid.uuid4())
-            password_hash = hash_password(password)
-            self.conn.execute("INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
-                            (user_id, username, email, password_hash))
-            self.conn.commit()
-            return user_id, None
-        except sqlite3.IntegrityError as e:
-            if 'username' in str(e):
-                return None, "שם משתמש כבר קיים"
-            elif 'email' in str(e):
-                return None, "אימייל כבר קיים"
-            return None, "שגיאה ביצירת משתמש"
-    
-    def verify_user(self, username, password):
-        """Verify user credentials"""
-        password_hash = hash_password(password)
-        user = self.conn.execute("SELECT id, username FROM users WHERE username = ? AND password_hash = ?",
-                                (username, password_hash)).fetchone()
-        if user:
-            return user['id'], user['username']
-        return None, None
-    
-    def get_user_by_id(self, user_id):
-        """Get user info by ID"""
-        return self.conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    
-    def get_user_by_email(self, email):
-        """Get user by email"""
-        return self.conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-    
-    def create_reset_code(self, email):
-        """Create password reset code for user"""
-        import random
-        from datetime import datetime, timedelta
-        
-        user = self.get_user_by_email(email)
-        if not user:
-            return None, "אימייל לא נמצא במערכת"
-        
-        # Generate 6-digit code
-        reset_code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
-        
-        # Set expiration (15 minutes from now)
-        expires_at = datetime.now() + timedelta(minutes=15)
-        
-        self.conn.execute(
-            "INSERT INTO password_resets (user_id, reset_code, expires_at) VALUES (?, ?, ?)",
-            (user['id'], reset_code, expires_at)
-        )
-        self.conn.commit()
-        
-        return reset_code, None
-    
-    def verify_reset_code(self, email, code):
-        """Verify reset code is valid"""
-        from datetime import datetime
-        
-        user = self.get_user_by_email(email)
-        if not user:
-            return False, "אימייל לא נמצא"
-        
-        reset = self.conn.execute("""
-            SELECT * FROM password_resets 
-            WHERE user_id = ? AND reset_code = ? AND used = 0 AND expires_at > ?
-            ORDER BY created_at DESC LIMIT 1
-        """, (user['id'], code, datetime.now())).fetchone()
-        
-        if not reset:
-            return False, "קוד שגוי או פג תוקף"
-        
-        return True, user['id']
-    
-    def reset_password(self, user_id, new_password, reset_code):
-        """Reset user password"""
-        # Mark code as used
-        self.conn.execute("UPDATE password_resets SET used = 1 WHERE reset_code = ?", (reset_code,))
-        
-        # Update password
-        password_hash = hash_password(new_password)
-        self.conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
-        self.conn.commit()
-        
-        return True
-    
-    # Investigation management (filtered by user)
-    def create_investigation(self, user_id, client_name, description=None):
-        inv_id = str(uuid.uuid4())
-        self.conn.execute("INSERT INTO investigations (id, user_id, client_name, description) VALUES (?, ?, ?, ?)",
-                         (inv_id, user_id, client_name, description))
-        self.conn.commit()
-        return inv_id
-    
-    def get_all_investigations(self, user_id):
-        """Get investigations for specific user only"""
-        investigations = self.conn.execute(
-            "SELECT * FROM investigations WHERE user_id = ? ORDER BY created_at DESC",
-            (user_id,)).fetchall()
-        result = []
-        for inv in investigations:
-            p_count = self.conn.execute("SELECT COUNT(*) FROM policies WHERE investigation_id = ?", 
-                                       (inv['id'],)).fetchone()[0]
-            q_count = self.conn.execute("SELECT COUNT(*) FROM qa_history WHERE investigation_id = ?", 
-                                       (inv['id'],)).fetchone()[0]
-            result.append({'id': inv['id'], 'client_name': inv['client_name'], 
-                          'description': inv['description'], 'created_at': inv['created_at'],
-                          'policy_count': p_count, 'question_count': q_count})
-        return result
-    
-    def get_investigation(self, inv_id):
-        return self.conn.execute("SELECT * FROM investigations WHERE id = ?", (inv_id,)).fetchone()
-    
-    def delete_investigation(self, inv_id):
-        files = self.conn.execute("SELECT file_path FROM policies WHERE investigation_id = ?", 
-                                 (inv_id,)).fetchall()
-        for f in files:
-            if f['file_path'] and os.path.exists(f['file_path']):
-                try: os.remove(f['file_path'])
-                except: pass
-        self.conn.execute("DELETE FROM investigations WHERE id = ?", (inv_id,))
-        self.conn.commit()
-    
-    def get_company_count(self, inv_id, company):
-        return self.conn.execute("SELECT COUNT(*) FROM policies WHERE investigation_id = ? AND company = ?",
-                                (inv_id, company)).fetchone()[0]
-    
-    def insert_policy(self, inv_id, company, file_name, custom_name, file_path, total_pages):
-        policy_id = str(uuid.uuid4())
-        self.conn.execute("""INSERT INTO policies (id, investigation_id, company, file_name, custom_name, file_path, total_pages)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                         (policy_id, inv_id, company, file_name, custom_name, file_path, total_pages))
-        self.conn.commit()
-        return policy_id
-    
-    def get_policies(self, inv_id):
-        return self.conn.execute("SELECT * FROM policies WHERE investigation_id = ? ORDER BY created_at DESC", 
-                                (inv_id,)).fetchall()
-    
-    def delete_policy(self, policy_id):
-        row = self.conn.execute("SELECT file_path FROM policies WHERE id = ?", (policy_id,)).fetchone()
-        if row and row['file_path'] and os.path.exists(row['file_path']):
-            try: os.remove(row['file_path'])
-            except: pass
-        self.conn.execute("DELETE FROM policies WHERE id = ?", (policy_id,))
-        self.conn.commit()
-    
-    def insert_chunks(self, policy_id, chunks):
-        for chunk in chunks:
-            self.conn.execute("INSERT INTO policy_chunks (policy_id, chunk_text) VALUES (?, ?)", 
-                            (policy_id, chunk))
-        self.conn.commit()
-    
-    def get_all_text(self, policy_id):
-        chunks = self.conn.execute("SELECT chunk_text FROM policy_chunks WHERE policy_id = ?", 
-                                  (policy_id,)).fetchall()
-        return "\n\n".join([row[0] for row in chunks])
-    
-    def search_chunks(self, policy_id, query, top_k=10):
-        chunks = self.conn.execute("SELECT chunk_text FROM policy_chunks WHERE policy_id = ?", 
-                                  (policy_id,)).fetchall()
-        query_lower = query.lower()
-        scored = []
-        for row in chunks:
-            text = row[0]
-            score = 0
-            if 'מחיר' in query_lower or 'עלות' in query_lower or 'פרמיה' in query_lower:
-                if 'גיל' in text.lower() or 'מחיר' in text.lower() or 'פרמיה' in text.lower():
-                    score += 10
-            score += sum(1 for word in query_lower.split() if word in text.lower())
-            if score > 0: scored.append({'text': text, 'score': score})
-        scored.sort(key=lambda x: x['score'], reverse=True)
-        return scored[:top_k]
-    
-    def save_qa(self, inv_id, question, answer, policy_names):
-        self.conn.execute("INSERT INTO qa_history (investigation_id, question, answer, policy_names) VALUES (?, ?, ?, ?)",
-                         (inv_id, question, answer, json.dumps(policy_names)))
-        self.conn.commit()
-    
-    def get_qa_history(self, inv_id):
-        return self.conn.execute(
-            "SELECT question, answer, policy_names, created_at FROM qa_history WHERE investigation_id = ? ORDER BY created_at DESC",
-            (inv_id,)).fetchall()
-
-def extract_text_from_pdf(pdf_file):
+def extract_text_from_pdf(pdf_file_or_bytes):
     """Extract text from PDF with improved handling for different formats"""
     if not PDF_SUPPORT: 
         return "❌ PDF support not available", 0
@@ -651,7 +403,12 @@ def extract_text_from_pdf(pdf_file):
         text = ""
         page_count = 0
         
-        with pdfplumber.open(pdf_file) as pdf:
+        # Handle both file objects and bytes
+        if isinstance(pdf_file_or_bytes, bytes):
+            import io
+            pdf_file_or_bytes = io.BytesIO(pdf_file_or_bytes)
+        
+        with pdfplumber.open(pdf_file_or_bytes) as pdf:
             page_count = len(pdf.pages)
             
             for i, page in enumerate(pdf.pages):
@@ -748,15 +505,27 @@ def create_chunks(text, size=1500, overlap=300):
 
 @st.cache_resource
 def init_connections():
-    db = Database()
-    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    # Initialize Supabase
+    url = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
+    key = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+    
+    if not url or not key:
+        st.error("⚠️ Supabase credentials not configured!")
+        st.stop()
+    
+    db = SupabaseDatabase(url=url, key=key)
+    storage_client = SupabaseStorage(url=url, key=key)
+    
+    # Initialize Claude
+    api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "").strip()
     claude = None
     if api_key:
         try: claude = Anthropic(api_key=api_key)
         except: pass
-    return db, claude
+    
+    return db, storage_client, claude
 
-db, claude_client = init_connections()
+db, storage, claude_client = init_connections()
 
 # LOGIN / REGISTER PAGE
 if not st.session_state.authenticated:
@@ -910,6 +679,10 @@ with st.sidebar:
                     st.rerun()
             with col2:
                 if st.button("🗑️ מחק", use_container_width=True):
+                    # Delete all files from storage
+                    storage.delete_investigation_files(st.session_state.current_investigation_id)
+                    
+                    # Delete from database
                     db.delete_investigation(st.session_state.current_investigation_id)
                     st.session_state.current_investigation_id = None
                     st.rerun()
@@ -1117,11 +890,11 @@ elif st.session_state.page == "📤 העלאה":
     if uploaded_file:
         with st.spinner("מעבד..."):
             try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-                    tmp.write(uploaded_file.getvalue())
-                    tmp_path = tmp.name
+                # Get file bytes
+                file_bytes = uploaded_file.getvalue()
                 
-                text, total_pages = extract_text_from_pdf(tmp_path)
+                # Extract text from bytes directly
+                text, total_pages = extract_text_from_pdf(file_bytes)
                 
                 # Check if extraction failed
                 if not text or text.startswith("❌") or text.startswith("⚠️"):
@@ -1132,7 +905,6 @@ elif st.session_state.page == "📤 העלאה":
                     - ודא שהקובץ מכיל טקסט (לא רק תמונות)
                     - נסה לשמור את הקובץ מחדש מהמקור
                     """)
-                    os.unlink(tmp_path)
                 else:
                     detected_company = detect_company(text)
                     
@@ -1155,36 +927,36 @@ elif st.session_state.page == "📤 העלאה":
                                                    help="השם שיוצג ברשימה")
                         
                         if st.form_submit_button("💾 שמור", type="primary"):
-                            safe_filename = f"{company}_{uuid.uuid4().hex[:8]}.pdf"
-                            final_path = os.path.join(UPLOAD_DIR, safe_filename)
-                            shutil.copy2(tmp_path, final_path)
-                            
-                            chunks = create_chunks(text)
-                            
-                            policy_id = db.insert_policy(
+                            # Upload PDF to Supabase Storage
+                            file_path, upload_error = storage.upload_pdf(
+                                file_bytes,
                                 st.session_state.current_investigation_id,
                                 company,
-                                uploaded_file.name,
-                                custom_name,
-                                final_path,
-                                total_pages
+                                uploaded_file.name
                             )
-                            db.insert_chunks(policy_id, chunks)
                             
-                            st.success(f"✅ נשמר: **{custom_name}**")
-                            st.balloons()
-                            
-                            try: os.unlink(tmp_path)
-                            except: pass
-                            
-                            st.rerun()
+                            if upload_error:
+                                st.error(f"❌ Error uploading file: {upload_error}")
+                            else:
+                                chunks = create_chunks(text)
+                                
+                                policy_id = db.insert_policy(
+                                    st.session_state.current_investigation_id,
+                                    company,
+                                    uploaded_file.name,
+                                    custom_name,
+                                    file_path,  # This is now the Supabase storage path
+                                    total_pages
+                                )
+                                db.insert_chunks(policy_id, chunks)
+                                
+                                st.success(f"✅ נשמר: **{custom_name}**")
+                                st.balloons()
+                                
+                                st.rerun()
             
             except Exception as e:
                 st.error(f"❌ שגיאה בעיבוד הקובץ: {str(e)}")
-                try: 
-                    os.unlink(tmp_path)
-                except: 
-                    pass
     
     st.markdown("---")
     
@@ -1203,6 +975,11 @@ elif st.session_state.page == "📤 העלאה":
                     st.caption(f"קובץ מקורי: {pol['file_name']}")
                 with col2:
                     if st.button("🗑️ מחק", key=f"del_{pol['id']}"):
+                        # Delete file from storage
+                        if pol.get('file_path'):
+                            storage.delete_pdf(pol['file_path'])
+                        
+                        # Delete from database
                         db.delete_policy(pol['id'])
                         st.success("נמחק!")
                         st.rerun()
