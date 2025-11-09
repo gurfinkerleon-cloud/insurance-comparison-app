@@ -551,7 +551,6 @@ if not st.session_state.authenticated:
                         user_name = None
                     
                     if user_id: 
-                    if user_id:
                         st.session_state.authenticated = True
                         st.session_state.user_id = user_id
                         st.session_state.username = user_name
