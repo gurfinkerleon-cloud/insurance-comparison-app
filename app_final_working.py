@@ -542,7 +542,7 @@ if not st.session_state.authenticated:
             
             if submit:
                 if username and password:
-                user = db.verify_user(username, password)
+                    user = db.verify_user(username, password)
                     if user:
                         user_id = user['id']
                         user_name = user['username']
