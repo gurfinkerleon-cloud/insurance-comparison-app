@@ -46,10 +46,12 @@ class SupabaseStorage:
             (file_path, error_message)
         """
         try:
-            # Generate unique filename
-            file_extension = os.path.splitext(original_filename)[1]
-            unique_id = str(uuid.uuid4())[:8]
-            file_name = f"{investigation_id}/{company}_{unique_id}{file_extension}"
+           # Generate unique filename (sanitize company name)
+file_extension = os.path.splitext(original_filename)[1]
+unique_id = str(uuid.uuid4())[:8]
+# Remove special characters from company name
+safe_company = company.replace("/", "_").replace("\\", "_").replace(" ", "_")
+file_name = f"{investigation_id}/{safe_company}_{unique_id}{file_extension}"
             
             # Upload file
             result = self.client.storage.from_(self.bucket_name).upload(
