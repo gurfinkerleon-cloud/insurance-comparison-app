@@ -66,15 +66,14 @@ class SupabaseStorage:
             (file_path, error_message)
         """
         try:
-            # Generate unique filename with sanitized company name
+            # Generate simple unique filename (just UUID + extension)
             file_extension = os.path.splitext(original_filename)[1]
-            unique_id = str(uuid.uuid4())[:8]
+            if not file_extension:
+                file_extension = '.pdf'
             
-            # Sanitize company name to avoid problematic characters
-            safe_company = self.sanitize_filename(company)
-            
-            # Create file path (flat structure, no subdirectories)
-            file_name = f"{investigation_id}_{safe_company}_{unique_id}{file_extension}"
+            # Use only UUID for filename to avoid any character issues
+            unique_id = str(uuid.uuid4())
+            file_name = f"{unique_id}{file_extension}"
             
             # Upload file
             result = self.client.storage.from_(self.bucket_name).upload(
@@ -152,15 +151,15 @@ class SupabaseStorage:
     def list_files(self, investigation_id: str) -> list:
         """
         List all files for an investigation
+        Note: Since filenames are now just UUIDs, we rely on database to track which files belong to which investigation
         
         Returns:
             List of file objects
         """
         try:
-            # List all files and filter by investigation_id prefix
+            # List all files in bucket
             all_files = self.client.storage.from_(self.bucket_name).list()
-            # Filter files that start with investigation_id
-            return [f for f in all_files if f.get('name', '').startswith(f"{investigation_id}_")]
+            return all_files
         except Exception as e:
             print(f"Error listing files: {e}")
             return []
