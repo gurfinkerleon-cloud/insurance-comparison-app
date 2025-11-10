@@ -73,8 +73,8 @@ class SupabaseStorage:
             # Sanitize company name to avoid problematic characters
             safe_company = self.sanitize_filename(company)
             
-            # Create file path
-            file_name = f"{investigation_id}/{safe_company}_{unique_id}{file_extension}"
+            # Create file path (flat structure, no subdirectories)
+            file_name = f"{investigation_id}_{safe_company}_{unique_id}{file_extension}"
             
             # Upload file
             result = self.client.storage.from_(self.bucket_name).upload(
@@ -157,8 +157,10 @@ class SupabaseStorage:
             List of file objects
         """
         try:
-            result = self.client.storage.from_(self.bucket_name).list(investigation_id)
-            return result
+            # List all files and filter by investigation_id prefix
+            all_files = self.client.storage.from_(self.bucket_name).list()
+            # Filter files that start with investigation_id
+            return [f for f in all_files if f.get('name', '').startswith(f"{investigation_id}_")]
         except Exception as e:
             print(f"Error listing files: {e}")
             return []
@@ -171,13 +173,13 @@ class SupabaseStorage:
             True if successful, False otherwise
         """
         try:
-            # List all files in the investigation folder
+            # List all files for this investigation
             files = self.list_files(investigation_id)
             
             if files:
-                # Delete all files
-                file_paths = [f"{investigation_id}/{file['name']}" for file in files]
-                self.client.storage.from_(self.bucket_name).remove(file_paths)
+                # Delete all files (using just the filename, not a path)
+                file_names = [file['name'] for file in files]
+                self.client.storage.from_(self.bucket_name).remove(file_names)
             
             return True
         except Exception as e:
