@@ -943,7 +943,7 @@ elif st.session_state.page == "📤 העלאה":
                             
                             chunks = create_chunks(text)
                             
-                            policy_id = db.insert_policy(
+                          policy_id = db.insert_policy(
                                 st.session_state.current_investigation_id,
                                 company,
                                 uploaded_file.name,
