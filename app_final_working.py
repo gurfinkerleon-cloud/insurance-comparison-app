@@ -2,7 +2,7 @@ import streamlit as st
 # import sqlite3  # ❌ Comentado - ya no se usa
 from anthropic import Anthropic
 from modules.database_supabase import SupabaseDatabase
-from modules.storage_supabase import SupabaseStorage
+# from modules.storage_supabase import SupabaseStorage  # ❌ Not used - using local storage
 import os
 from dotenv import load_dotenv
 import tempfile
@@ -514,7 +514,7 @@ def init_connections():
         st.stop()
     
     db = SupabaseDatabase(url=url, key=key)
-    storage_client = SupabaseStorage(url=url, key=key)
+    # storage_client = SupabaseStorage(url=url, key=key)  # Not used - using local storage for PDFs
     
     # Initialize Claude
     api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "").strip()
@@ -523,9 +523,9 @@ def init_connections():
         try: claude = Anthropic(api_key=api_key)
         except: pass
     
-    return db, storage_client, claude
+    return db, claude
 
-db, storage, claude_client = init_connections()
+db, claude_client = init_connections()
 
 # LOGIN / REGISTER PAGE
 if not st.session_state.authenticated:
@@ -542,15 +542,8 @@ if not st.session_state.authenticated:
             
             if submit:
                 if username and password:
-                    user = db.verify_user(username, password)
-                    if user:
-                        user_id = user['id']
-                        user_name = user['username']
-                    else:
-                        user_id = None
-                        user_name = None
-                    
-                    if user_id: 
+                    user_id, user_name = db.verify_user(username, password)
+                    if user_id:
                         st.session_state.authenticated = True
                         st.session_state.user_id = user_id
                         st.session_state.username = user_name
@@ -686,8 +679,14 @@ with st.sidebar:
                     st.rerun()
             with col2:
                 if st.button("🗑️ מחק", use_container_width=True):
-                    # Delete all files from storage
-                    storage.delete_investigation_files(st.session_state.current_investigation_id)
+                    # Delete all local files for this investigation
+                    try:
+                        policies = db.get_policies(st.session_state.current_investigation_id)
+                        for pol in policies:
+                            if pol.get('file_path') and os.path.exists(pol['file_path']):
+                                os.remove(pol['file_path'])
+                    except Exception as e:
+                        pass  # Files might already be deleted
                     
                     # Delete from database
                     db.delete_investigation(st.session_state.current_investigation_id)
@@ -934,27 +933,26 @@ elif st.session_state.page == "📤 העלאה":
                                                    help="השם שיוצג ברשימה")
                         
                         if st.form_submit_button("💾 שמור", type="primary"):
-                            # Upload PDF to Supabase Storage
-                            file_path, upload_error = storage.upload_pdf(
-                                file_bytes,
+                            # Save PDF locally (Supabase Storage has issues with PDFs in free tier)
+                            safe_filename = f"{company}_{uuid.uuid4().hex[:8]}.pdf"
+                            file_path = os.path.join(UPLOAD_DIR, safe_filename)
+                            
+                            # Write file to local storage
+                            with open(file_path, 'wb') as f:
+                                f.write(file_bytes)
+                            
+                            chunks = create_chunks(text)
+                            
+                            policy_id = db.insert_policy(
                                 st.session_state.current_investigation_id,
                                 company,
-                                uploaded_file.name
+                                uploaded_file.name,
+                                custom_name,
+                                file_path,
+                                total_pages
                             )
-                            
-                            if upload_error:
-                                st.error(f"❌ Error uploading file: {upload_error}")
-                            else:
-                                chunks = create_chunks(text)
+                                db.insert_chunks(policy_id, chunks)
                                 
-                                policy_id = db.insert_policy(
-                                    st.session_state.current_investigation_id,
-                                    company,
-                                    uploaded_file.name,
-                                    custom_name,
-                                    file_path,  # This is now the Supabase storage path
-                                    total_pages
-                                )
                                 db.insert_chunks(policy_id, chunks)
                                 
                                 st.success(f"✅ נשמר: **{custom_name}**")
@@ -982,9 +980,12 @@ elif st.session_state.page == "📤 העלאה":
                     st.caption(f"קובץ מקורי: {pol['file_name']}")
                 with col2:
                     if st.button("🗑️ מחק", key=f"del_{pol['id']}"):
-                        # Delete file from storage
-                        if pol.get('file_path'):
-                            storage.delete_pdf(pol['file_path'])
+                        # Delete local file
+                        try:
+                            if pol.get('file_path') and os.path.exists(pol['file_path']):
+                                os.remove(pol['file_path'])
+                        except Exception as e:
+                            pass  # File might already be deleted
                         
                         # Delete from database
                         db.delete_policy(pol['id'])
