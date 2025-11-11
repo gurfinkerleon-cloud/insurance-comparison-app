@@ -1506,3 +1506,4 @@ elif st.session_state.page == "👑 ניהול":
 
 st.markdown("---")
 st.caption(f"מערכת השוואת פוליסות | משתמש: {st.session_state.username}")
+
