@@ -951,14 +951,12 @@ elif st.session_state.page == "📤 העלאה":
                                 file_path,
                                 total_pages
                             )
-                                db.insert_chunks(policy_id, chunks)
-                                
-                                db.insert_chunks(policy_id, chunks)
-                                
-                                st.success(f"✅ נשמר: **{custom_name}**")
-                                st.balloons()
-                                
-                                st.rerun()
+                            db.insert_chunks(policy_id, chunks)
+                            
+                            st.success(f"✅ נשמר: **{custom_name}**")
+                            st.balloons()
+                            
+                            st.rerun()
             
             except Exception as e:
                 st.error(f"❌ שגיאה בעיבוד הקובץ: {str(e)}")
