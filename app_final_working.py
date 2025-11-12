@@ -1120,13 +1120,14 @@ elif st.session_state.page == "❓ שאלות":
                                     import re
                                     nispach_match = re.search(r'נספח\s*(\d+[/-]?\d*)', query)
                                     nispach_info_text = ""
+                                    nispach_number = None
                                 
                                     if nispach_match:
                                         nispach_number = nispach_match.group(1)
-                                        nispach_data = get_nispach_info(nispach_number)
                                         
+                                        # ALWAYS add info from our dictionary if available (as general knowledge)
+                                        nispach_data = get_nispach_info(nispach_number)
                                         if nispach_data:
-                                            # Build detailed nispach info including reimbursement
                                             nispach_info_text = f"""
 
 📋 מידע כללי על נספח {nispach_number} - {nispach_data['name']}:
@@ -1172,11 +1173,18 @@ elif st.session_state.page == "❓ שאלות":
                                                 reimbursement_info = data.get('reimbursement', {}).get(service, 'לא צוין')
                                                 nispach_info_text += f"\n- נספח {num} ({data['name']}): {service} - {reimbursement_info}"
                                     
+                                    # ALWAYS search in the PDF for the nispach (whether we have info or not)
                                     selected_ids = [policy_options[name] for name in selected_names]
                                     all_contexts = []
                                     
+                                    # If asking about a nispach, search specifically for it
+                                    if nispach_number:
+                                        search_query = f"נספח {nispach_number}"
+                                    else:
+                                        search_query = query
+                                    
                                     for name, pol_id in zip(selected_names, selected_ids):
-                                        chunks = db.search_chunks(pol_id, query, top_k=10)
+                                        chunks = db.search_chunks(pol_id, search_query, top_k=15)  # Increased to 15 for better coverage
                                         if chunks:
                                             context = f"=== פוליסה: {name} ===\n" + "\n\n".join([c['text'] for c in chunks[:5]])
                                             all_contexts.append(context)
@@ -1196,19 +1204,27 @@ elif st.session_state.page == "❓ שאלות":
 7. אם יש מידע על שיעורי החזר - הצג אותו בבירור
 8. הפרד בין מידע ספציפי מהפוליסה למידע כללי
 
-**חשוב במיוחד:**
-- אם שואלים "איזו פוליסה זו?" - זהה את שם הפוליסה, מספר הפוליסה, חברת הביטוח והנספחים
-- אם שואלים על נספח ספציפי - אשר שהוא קיים בפוליסה ותן פרטים ממנה
+**חשוב במיוחד לגבי נספחים:**
+- תמיד חפש קודם מידע על הנספח בפוליסה עצמה
+- אם הנספח מופיע בפוליסה - תן את המידע הספציפי ממנה (תנאים, מחירים, מגבלות)
+- אם הנספח לא מופיע בפוליסה - אמר זאת במפורש: "נספח X לא מופיע בפוליסה שהועלתה"
+- אם יש מידע כללי על הנספח (מהמערכת) - הוסף אותו בסוף אבל הבהר שזה מידע כללי ולא מהפוליסה הספציפית
+- אם לא מוצא כלום על הנספח - המלץ לבדוק עם חברת הביטוח
 
-פורמט תשובה מומלץ:
-### 📄 מה נמצא בפוליסה
-[מידע ספציפי מהפוליסה שהועלתה - כולל מספר פוליסה, חברה, נספחים]
+**כשעונה על שאלה על נספח:**
+1. קודם - האם הנספח מופיע בפוליסה? (חפש "נספח X" בתוכן)
+2. אם כן - מה כתוב עליו בפוליסה?
+3. אם לא - אמר שלא מופיע, ותן מידע כללי אם יש
 
-### 💡 מידע כללי על הנספח
-[מידע נוסף רלוונטי]
+פורמט תשובה מומלץ לנספחים:
+### 📄 מה נמצא בפוליסה שהעלית
+[אם הנספח מופיע - פרט מה כתוב. אם לא - אמר "נספח X לא מופיע בפוליסה זו"]
 
-### 💰 שיעורי החזר
-[פירוט שיעורי החזר אם ידועים]"""
+### 💡 מידע כללי על נספח X
+[מידע כללי - אם יש. ציין שזה מידע כללי ולא מהפוליסה הספציפית]
+
+### 🎯 המלצה
+[המלץ לבדוק עם חברת הביטוח לפרטים מדויקים]"""
                                         
                                         user_content = f"""שאלה: {query}
 
