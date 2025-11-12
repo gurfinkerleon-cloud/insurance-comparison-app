@@ -494,7 +494,7 @@ def detect_company(text):
         company_scores["איילון"] += 25
     
     # Priority 1: Check for company-specific websites and emails (most reliable) - 10 points
-    if 'fnx.co.il' in text_lower or 'myinfo.fnx' in text_lower or 'phoenix' in text_lower:
+    if 'fnx.co.il' in text_lower or 'myinfo.fnx' in text_lower or 'phoenix' in text_lower or 'fnx4u' in text_lower:
         company_scores["הפניקס"] += 10
     if 'clal.co.il' in text_lower or 'clalbit.co.il' in text_lower or 'bit.clal.co.il' in text_lower or '@clal-ins.co.il' in text_lower or 'clal-ins.co.il' in text_lower:
         company_scores["כלל"] += 10
@@ -1195,11 +1195,15 @@ elif st.session_state.page == "❓ שאלות":
                                         search_query = f"נספח {nispach_number}"
                                     else:
                                         search_query = query
+                                        # If asking about MRI/CT costs, also search for specific terms
+                                        if any(word in query.lower() for word in ['mri', 'ct', 'מגנט', 'סריקה']):
+                                            if 'השתתפות' in query or 'עלות' in query or 'מחיר' in query:
+                                                search_query += " השתתפות עצמית עלות מחיר ₪ 600"
                                     
                                     for name, pol_id in zip(selected_names, selected_ids):
-                                        chunks = db.search_chunks(pol_id, search_query, top_k=15)  # Increased to 15 for better coverage
+                                        chunks = db.search_chunks(pol_id, search_query, top_k=20)  # Increased to 20 for better coverage
                                         if chunks:
-                                            context = f"=== פוליסה: {name} ===\n" + "\n\n".join([c['text'] for c in chunks[:5]])
+                                            context = f"=== פוליסה: {name} ===\n" + "\n\n".join([c['text'] for c in chunks[:8]])  # Use more chunks
                                             all_contexts.append(context)
                                     
                                     if all_contexts or nispach_info_text:
