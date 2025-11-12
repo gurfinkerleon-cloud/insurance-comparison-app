@@ -451,6 +451,9 @@ def detect_company(text):
     header_text = text[:2000]
     header_lower = header_text.lower()
     
+    # Get last 1000 characters (footer where company name often appears)
+    footer_text = text[-1000:] if len(text) > 1000 else text
+    
     # Count occurrences for better detection
     company_scores = {
         "הפניקס": 0,
@@ -461,19 +464,34 @@ def detect_company(text):
         "איילון": 0
     }
     
-    # Priority 0: HIGHEST - Check header for company name (logo area) - 20 points
+    # Priority 0: HIGHEST - Check header AND footer for company name - 25 points
+    # Normal text
     if 'הפניקס' in header_text or 'פניקס' in header_text:
-        company_scores["הפניקס"] += 20
+        company_scores["הפניקס"] += 25
     if 'כלל' in header_text and 'כללי' not in header_text:
-        company_scores["כלל"] += 20
+        company_scores["כלל"] += 25
     if 'הראל' in header_text:
-        company_scores["הראל"] += 20
+        company_scores["הראל"] += 25
     if 'מגדל' in header_text:
-        company_scores["מגדל"] += 20
+        company_scores["מגדל"] += 25
     if 'מנורה' in header_text:
-        company_scores["מנורה"] += 20
+        company_scores["מנורה"] += 25
     if 'איילון' in header_text:
-        company_scores["איילון"] += 20
+        company_scores["איילון"] += 25
+    
+    # Reversed text (RTL rendering issue) - CHECK FOOTER
+    if 'סקינפה' in footer_text:  # הפניקס reversed
+        company_scores["הפניקס"] += 25
+    if 'ללכ' in footer_text and 'ילכ' not in footer_text:  # כלל reversed (but not כלכלי)
+        company_scores["כלל"] += 25
+    if 'לארה' in footer_text:  # הראל reversed
+        company_scores["הראל"] += 25
+    if 'לדגמ' in footer_text:  # מגדל reversed
+        company_scores["מגדל"] += 25
+    if 'הרונמ' in footer_text:  # מנורה reversed
+        company_scores["מנורה"] += 25
+    if 'ןוליא' in footer_text:  # איילון reversed
+        company_scores["איילון"] += 25
     
     # Priority 1: Check for company-specific websites and emails (most reliable) - 10 points
     if 'fnx.co.il' in text_lower or 'myinfo.fnx' in text_lower or 'phoenix' in text_lower:
@@ -503,18 +521,21 @@ def detect_company(text):
     if '*5620' in text or '5620*' in text:
         company_scores["איילון"] += 8
     
-    # Priority 3: Count company name appearances - 3 points each
-    company_scores["הפניקס"] += text.count('פניקס') * 3 + text.count('הפניקס') * 3
-    company_scores["כלל"] += (text.count('כלל') - text.count('כללי')) * 3  # Avoid false positives with "כללי"
-    company_scores["הראל"] += text.count('הראל') * 3
-    company_scores["מגדל"] += text.count('מגדל') * 3
-    company_scores["מנורה"] += text.count('מנורה') * 3
-    company_scores["איילון"] += text.count('איילון') * 3
+    # Priority 3: Count company name appearances - 3 points each (both normal and reversed)
+    company_scores["הפניקס"] += (text.count('פניקס') + text.count('הפניקס') + text.count('סקינפה') + text.count('סקינפ')) * 3
+    company_scores["כלל"] += ((text.count('כלל') - text.count('כללי')) + text.count('ללכ')) * 3
+    company_scores["הראל"] += (text.count('הראל') + text.count('לארה')) * 3
+    company_scores["מגדל"] += (text.count('מגדל') + text.count('לדגמ')) * 3
+    company_scores["מנורה"] += (text.count('מנורה') + text.count('הרונמ')) * 3
+    company_scores["איילון"] += (text.count('איילון') + text.count('ןוליא')) * 3
     
     # Priority 4: Check for unique company identifiers - 5 points
     if 'כלל חברה לביטוח' in text or 'כלל תכנית הגריאטריות' in text:
         company_scores["כלל"] += 5
     if 'הפניקס חברה לביטוח' in text or ('חברה לביטוח בע"מ' in text and 'הפניקס' in text):
+        company_scores["הפניקס"] += 5
+    # Reversed versions
+    if 'חוטיבל הרבח סקינפה' in text or 'מ״עב חוטיבל הרבח' in text and 'סקינפה' in text:
         company_scores["הפניקס"] += 5
     
     # Return company with highest score (minimum 3 to avoid false positives)
