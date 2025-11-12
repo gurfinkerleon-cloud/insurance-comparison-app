@@ -527,6 +527,16 @@ def init_connections():
 
 db, claude_client = init_connections()
 
+# TEST: Verify Supabase connection
+st.sidebar.write("🔍 Testing Supabase...")
+st.sidebar.write(f"URL: {db.url[:30]}...")
+st.sidebar.write(f"Key: {db.key[:20]}...")
+try:
+    test = db.client.table("users").select("id").limit(1).execute()
+    st.sidebar.success("✅ Supabase connected!")
+except Exception as e:
+    st.sidebar.error(f"❌ Supabase error: {str(e)[:100]}")
+
 # LOGIN / REGISTER PAGE
 if not st.session_state.authenticated:
     st.title("🔐 השוואת פוליסות ביטוח")
