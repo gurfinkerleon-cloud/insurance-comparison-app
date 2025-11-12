@@ -1051,8 +1051,20 @@ elif st.session_state.page == "❓ שאלות":
                                     placeholder="למשל: מה המחיר החודשי לגיל 30?",
                                     height=100)
                 
-                if st.button("🔍 שאל", type="primary") and query and claude_client:
-                    with st.spinner("מחפש ומנתח..."):
+                if st.button("🔍 שאל", type="primary") and query:
+                    # Re-initialize Claude to avoid cache issues
+                    api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "").strip()
+                    if not api_key:
+                        st.error("❌ API key not configured")
+                    else:
+                        try:
+                            fresh_claude = Anthropic(api_key=api_key)
+                        except Exception as e:
+                            st.error(f"❌ Failed to initialize Claude: {str(e)}")
+                            fresh_claude = None
+                        
+                        if fresh_claude:
+                            with st.spinner("מחפש ומנתח..."):
                         try:
                             # Check if question is about a specific nispach
                             import re
@@ -1157,7 +1169,7 @@ elif st.session_state.page == "❓ שאלות":
 ענה בדיוק על סמך המידע. אם יש מידע כללי על נספח, הוסף אותו בסוף התשובה.
 אם השאלה היא על שיעורי החזר או מגבלות - הדגש את המידע הזה בתשובה."""
                                 
-                                response = claude_client.messages.create(
+                                response = fresh_claude.messages.create(
                                     model="claude-sonnet-4-20250514",
                                     max_tokens=1800,
                                     system=system_prompt,
@@ -1203,8 +1215,20 @@ elif st.session_state.page == "❓ שאלות":
             height=100
         )
         
-        if st.button("🔍 שאל", type="primary") and query and claude_client:
-            with st.spinner("מחפש מידע..."):
+        if st.button("🔍 שאל", type="primary") and query:
+            # Re-initialize Claude to avoid cache issues
+            api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "").strip()
+            if not api_key:
+                st.error("❌ API key not configured")
+            else:
+                try:
+                    fresh_claude = Anthropic(api_key=api_key)
+                except Exception as e:
+                    st.error(f"❌ Failed to initialize Claude: {str(e)}")
+                    fresh_claude = None
+                
+                if fresh_claude:
+                    with st.spinner("מחפש מידע..."):
                 try:
                     # Build context with company info if specific companies selected
                     company_context = ""
@@ -1273,7 +1297,7 @@ elif st.session_state.page == "❓ שאלות":
 
 ענה על השאלה בצורה מקצועית ומפורטת. אם יש מידע ספציפי על חברות או נספחים - שלב אותו בתשובה."""
                     
-                    response = claude_client.messages.create(
+                    response = fresh_claude.messages.create(
                         model="claude-sonnet-4-20250514",
                         max_tokens=2000,
                         system=system_prompt,
@@ -1302,8 +1326,20 @@ elif st.session_state.page == "⚖️ השוואה":
                                        default=list(policy_options.keys())[:2])
         
         if len(selected_names) >= 2:
-            if st.button("🔍 השווה", type="primary") and claude_client:
-                with st.spinner("מכין השוואה..."):
+            if st.button("🔍 השווה", type="primary"):
+                # Re-initialize Claude to avoid cache issues
+                api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "").strip()
+                if not api_key:
+                    st.error("❌ API key not configured")
+                else:
+                    try:
+                        fresh_claude = Anthropic(api_key=api_key)
+                    except Exception as e:
+                        st.error(f"❌ Failed to initialize Claude: {str(e)}")
+                        fresh_claude = None
+                    
+                    if fresh_claude:
+                        with st.spinner("מכין השוואה..."):
                     try:
                         selected_ids = [policy_options[name] for name in selected_names]
                         all_texts = []
@@ -1314,7 +1350,7 @@ elif st.session_state.page == "⚖️ השוואה":
                         
                         combined = "\n\n".join(all_texts)
                         
-                        response = claude_client.messages.create(
+                        response = fresh_claude.messages.create(
                             model="claude-sonnet-4-20250514",
                             max_tokens=2500,
                             system="""מומחה השוואת פוליסות. הכן השוואה מקיפה.
