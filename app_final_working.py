@@ -447,51 +447,80 @@ def detect_company(text):
     """Detect insurance company from PDF text with priority indicators"""
     text_lower = text.lower()
     
-    # Priority 1: Check for company-specific websites and emails (most reliable)
-    if 'fnx.co.il' in text_lower or 'myinfo.fnx' in text_lower:
-        return "הפניקס"
-    elif 'clal.co.il' in text_lower or 'clalbit.co.il' in text_lower or 'bit.clal.co.il' in text_lower or '@clal-ins.co.il' in text_lower or 'clal-ins.co.il' in text_lower:
-        return "כלל"
-    elif 'harel-group.co.il' in text_lower or 'hrl.co.il' in text_lower:
-        return "הראל"
-    elif 'migdal.co.il' in text_lower:
-        return "מגדל"
-    elif 'menoramivt.co.il' in text_lower:
-        return "מנורה"
-    elif 'ayalon-ins.co.il' in text_lower:
-        return "איילון"
+    # Get first 2000 characters (header area where logo/company name usually appears)
+    header_text = text[:2000]
+    header_lower = header_text.lower()
     
-    # Priority 2: Check for company phone numbers
-    if '3455*' in text or '*3455' in text or '03-7332222' in text:
-        return "הפניקס"
-    elif '*2800' in text or '2800*' in text or '03-6376666' in text or '077-6383290' in text or '6136902' in text:
-        return "כלל"
-    elif '*2407' in text or '2407*' in text:
-        return "הראל"
-    elif '*2679' in text or '2679*' in text:
-        return "מגדל"
-    elif '*2000' in text or '2000*' in text:
-        return "מנורה"
-    elif '*5620' in text or '5620*' in text:
-        return "איילון"
+    # Count occurrences for better detection
+    company_scores = {
+        "הפניקס": 0,
+        "כלל": 0,
+        "הראל": 0,
+        "מגדל": 0,
+        "מנורה": 0,
+        "איילון": 0
+    }
     
-    # Priority 3: Check for unique company identifiers
-    if 'כלל חברה לביטוח' in text or 'כלל תכנית הגריאטריות' in text or 'ביטוח וסיכונים' in text:
-        return "כלל"
+    # Priority 0: HIGHEST - Check header for company name (logo area) - 20 points
+    if 'הפניקס' in header_text or 'פניקס' in header_text:
+        company_scores["הפניקס"] += 20
+    if 'כלל' in header_text and 'כללי' not in header_text:
+        company_scores["כלל"] += 20
+    if 'הראל' in header_text:
+        company_scores["הראל"] += 20
+    if 'מגדל' in header_text:
+        company_scores["מגדל"] += 20
+    if 'מנורה' in header_text:
+        company_scores["מנורה"] += 20
+    if 'איילון' in header_text:
+        company_scores["איילון"] += 20
     
-    # Priority 4: Check for company names (less reliable)
-    if 'פניקס' in text or 'הפניקס' in text or 'phoenix' in text_lower or 'fnx' in text_lower:
-        return "הפניקס"
-    elif 'כלל ביטוח' in text or 'clalbit' in text_lower or 'clal insurance' in text_lower:
-        return "כלל"
-    elif 'הראל' in text or 'harel' in text_lower:
-        return "הראל"
-    elif 'מגדל' in text or 'migdal' in text_lower:
-        return "מגדל"
-    elif 'מנורה' in text or 'menora' in text_lower or 'מנורה מבטחים' in text:
-        return "מנורה"
-    elif 'איילון' in text or 'ayalon' in text_lower:
-        return "איילון"
+    # Priority 1: Check for company-specific websites and emails (most reliable) - 10 points
+    if 'fnx.co.il' in text_lower or 'myinfo.fnx' in text_lower or 'phoenix' in text_lower:
+        company_scores["הפניקס"] += 10
+    if 'clal.co.il' in text_lower or 'clalbit.co.il' in text_lower or 'bit.clal.co.il' in text_lower or '@clal-ins.co.il' in text_lower or 'clal-ins.co.il' in text_lower:
+        company_scores["כלל"] += 10
+    if 'harel-group.co.il' in text_lower or 'hrl.co.il' in text_lower:
+        company_scores["הראל"] += 10
+    if 'migdal.co.il' in text_lower:
+        company_scores["מגדל"] += 10
+    if 'menoramivt.co.il' in text_lower:
+        company_scores["מנורה"] += 10
+    if 'ayalon-ins.co.il' in text_lower:
+        company_scores["איילון"] += 10
+    
+    # Priority 2: Check for company phone numbers - 8 points
+    if '3455*' in text or '*3455' in text or '03-7332222' in text or '03-7357988' in text:
+        company_scores["הפניקס"] += 8
+    if '*2800' in text or '2800*' in text or '03-6376666' in text or '077-6383290' in text or '6136902' in text:
+        company_scores["כלל"] += 8
+    if '*2407' in text or '2407*' in text:
+        company_scores["הראל"] += 8
+    if '*2679' in text or '2679*' in text:
+        company_scores["מגדל"] += 8
+    if '*2000' in text or '2000*' in text:
+        company_scores["מנורה"] += 8
+    if '*5620' in text or '5620*' in text:
+        company_scores["איילון"] += 8
+    
+    # Priority 3: Count company name appearances - 3 points each
+    company_scores["הפניקס"] += text.count('פניקס') * 3 + text.count('הפניקס') * 3
+    company_scores["כלל"] += (text.count('כלל') - text.count('כללי')) * 3  # Avoid false positives with "כללי"
+    company_scores["הראל"] += text.count('הראל') * 3
+    company_scores["מגדל"] += text.count('מגדל') * 3
+    company_scores["מנורה"] += text.count('מנורה') * 3
+    company_scores["איילון"] += text.count('איילון') * 3
+    
+    # Priority 4: Check for unique company identifiers - 5 points
+    if 'כלל חברה לביטוח' in text or 'כלל תכנית הגריאטריות' in text:
+        company_scores["כלל"] += 5
+    if 'הפניקס חברה לביטוח' in text or ('חברה לביטוח בע"מ' in text and 'הפניקס' in text):
+        company_scores["הפניקס"] += 5
+    
+    # Return company with highest score (minimum 3 to avoid false positives)
+    max_score = max(company_scores.values())
+    if max_score >= 3:
+        return max(company_scores, key=company_scores.get)
     
     return None
 
