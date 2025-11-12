@@ -1065,13 +1065,13 @@ elif st.session_state.page == "❓ שאלות":
                         
                         if fresh_claude:
                             with st.spinner("מחפש ומנתח..."):
-                        try:
-                            # Check if question is about a specific nispach
-                            import re
-                            nispach_match = re.search(r'נספח\s*(\d+[/-]?\d*)', query)
-                            nispach_info_text = ""
-                        
-                            if nispach_match:
+                                try:
+                                    # Check if question is about a specific nispach
+                                    import re
+                                    nispach_match = re.search(r'נספח\s*(\d+[/-]?\d*)', query)
+                                    nispach_info_text = ""
+                                
+                                    if nispach_match:
                                 nispach_number = nispach_match.group(1)
                                 nispach_data = get_nispach_info(nispach_number)
                                 
@@ -1094,47 +1094,47 @@ elif st.session_state.page == "❓ שאלות":
 
 💡 הערות: {nispach_data['notes']}
 """
-                            
-                            # Also check for specific services mentioned (MRI, CT, etc.)
-                            services_mentioned = []
-                            if any(word in query.lower() for word in ['mri', 'אם.אר.איי', 'מגנט']):
-                                services_mentioned.append('MRI')
-                            if any(word in query.lower() for word in ['ct', 'סי.טי', 'ציאוטי']):
-                                services_mentioned.append('CT')
-                            if 'מעבדה' in query or 'בדיקות דם' in query:
-                                services_mentioned.append('בדיקות מעבדה')
-                            if 'ייעוץ' in query or 'מומחה' in query:
-                                services_mentioned.append('ייעוץ מומחה')
-                            
-                            # If services are mentioned, add relevant nispach info
-                            if services_mentioned and not nispach_match:
-                                # Find relevant nispachim
-                                relevant_nispachim = []
-                                for num, data in NISPACH_INFO.items():
-                                    for service in services_mentioned:
-                                        if service in str(data.get('reimbursement', {})):
-                                            relevant_nispachim.append((num, data, service))
-                                            break
                                 
-                                if relevant_nispachim:
-                                    nispach_info_text += "\n\n🔍 נספחים רלוונטיים:\n"
-                                    for num, data, service in relevant_nispachim[:3]:  # Limit to 3
-                                        reimbursement_info = data.get('reimbursement', {}).get(service, 'לא צוין')
-                                        nispach_info_text += f"\n- נספח {num} ({data['name']}): {service} - {reimbursement_info}"
-                            
-                            selected_ids = [policy_options[name] for name in selected_names]
-                            all_contexts = []
-                            
-                            for name, pol_id in zip(selected_names, selected_ids):
-                                chunks = db.search_chunks(pol_id, query, top_k=10)
-                                if chunks:
-                                    context = f"=== פוליסה: {name} ===\n" + "\n\n".join([c['text'] for c in chunks[:5]])
-                                    all_contexts.append(context)
-                            
-                            if all_contexts or nispach_info_text:
-                                combined = "\n\n".join(all_contexts) if all_contexts else ""
-                                
-                                system_prompt = """אתה מומחה ביטוח ישראלי. חלץ מידע מדויק מפוליסות.
+                                    # Also check for specific services mentioned (MRI, CT, etc.)
+                                    services_mentioned = []
+                                    if any(word in query.lower() for word in ['mri', 'אם.אר.איי', 'מגנט']):
+                                        services_mentioned.append('MRI')
+                                    if any(word in query.lower() for word in ['ct', 'סי.טי', 'ציאוטי']):
+                                        services_mentioned.append('CT')
+                                    if 'מעבדה' in query or 'בדיקות דם' in query:
+                                        services_mentioned.append('בדיקות מעבדה')
+                                    if 'ייעוץ' in query or 'מומחה' in query:
+                                        services_mentioned.append('ייעוץ מומחה')
+                                    
+                                    # If services are mentioned, add relevant nispach info
+                                    if services_mentioned and not nispach_match:
+                                        # Find relevant nispachim
+                                        relevant_nispachim = []
+                                        for num, data in NISPACH_INFO.items():
+                                            for service in services_mentioned:
+                                                if service in str(data.get('reimbursement', {})):
+                                                    relevant_nispachim.append((num, data, service))
+                                                    break
+                                        
+                                        if relevant_nispachim:
+                                            nispach_info_text += "\n\n🔍 נספחים רלוונטיים:\n"
+                                            for num, data, service in relevant_nispachim[:3]:  # Limit to 3
+                                                reimbursement_info = data.get('reimbursement', {}).get(service, 'לא צוין')
+                                                nispach_info_text += f"\n- נספח {num} ({data['name']}): {service} - {reimbursement_info}"
+                                    
+                                    selected_ids = [policy_options[name] for name in selected_names]
+                                    all_contexts = []
+                                    
+                                    for name, pol_id in zip(selected_names, selected_ids):
+                                        chunks = db.search_chunks(pol_id, query, top_k=10)
+                                        if chunks:
+                                            context = f"=== פוליסה: {name} ===\n" + "\n\n".join([c['text'] for c in chunks[:5]])
+                                            all_contexts.append(context)
+                                    
+                                    if all_contexts or nispach_info_text:
+                                        combined = "\n\n".join(all_contexts) if all_contexts else ""
+                                        
+                                        system_prompt = """אתה מומחה ביטוח ישראלי. חלץ מידע מדויק מפוליסות.
 
 כללים:
 1. חפש טבלאות מחירים והצג אותן במדויק
@@ -1159,8 +1159,8 @@ elif st.session_state.page == "❓ שאלות":
 
 ### 💰 שיעורי החזר
 [פירוט שיעורי החזר אם ידועים]"""
-                                
-                                user_content = f"""שאלה: {query}
+                                        
+                                        user_content = f"""שאלה: {query}
 
 תוכן מהפוליסות:
 {combined if combined else "(לא נמצא מידע ספציפי בפוליסה)"}
@@ -1168,23 +1168,23 @@ elif st.session_state.page == "❓ שאלות":
 
 ענה בדיוק על סמך המידע. אם יש מידע כללי על נספח, הוסף אותו בסוף התשובה.
 אם השאלה היא על שיעורי החזר או מגבלות - הדגש את המידע הזה בתשובה."""
-                                
-                                response = fresh_claude.messages.create(
-                                    model="claude-sonnet-4-20250514",
-                                    max_tokens=1800,
-                                    system=system_prompt,
-                                    messages=[{"role": "user", "content": user_content}]
-                                )
-                                
-                                answer = response.content[0].text
-                                st.markdown("### 💡 תשובה:")
-                                st.success(answer)
-                                
-                                db.save_qa(st.session_state.current_investigation_id, query, answer, selected_names)
-                            else:
-                                st.warning("❌ לא נמצא מידע רלוונטי")
-                        except Exception as e:
-                            st.error(f"❌ שגיאה: {str(e)}")
+                                        
+                                        response = fresh_claude.messages.create(
+                                            model="claude-sonnet-4-20250514",
+                                            max_tokens=1800,
+                                            system=system_prompt,
+                                            messages=[{"role": "user", "content": user_content}]
+                                        )
+                                        
+                                        answer = response.content[0].text
+                                        st.markdown("### 💡 תשובה:")
+                                        st.success(answer)
+                                        
+                                        db.save_qa(st.session_state.current_investigation_id, query, answer, selected_names)
+                                    else:
+                                        st.warning("❌ לא נמצא מידע רלוונטי")
+                                except Exception as e:
+                                    st.error(f"❌ שגיאה: {str(e)}")
     
     else:  # General information mode
         st.info("💡 **במצב זה אתה יכול לשאול שאלות כלליות על ביטוחים ללא צורך בפוליסות**")
