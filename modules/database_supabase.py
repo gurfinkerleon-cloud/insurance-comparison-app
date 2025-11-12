@@ -174,23 +174,18 @@ class SupabaseDatabase:
     # ==================== INVESTIGATION MANAGEMENT ====================
     
     def create_investigation(self, user_id, client_name, description=None):
-        """Create new investigation"""
-        try:
-            inv_id = str(uuid.uuid4())
-            data = {
-                "id": inv_id,
-                "user_id": user_id,
-                "client_name": client_name,
-                "description": description,
-                "created_at": datetime.now().isoformat()
-            }
-            
-            self.client.table("investigations").insert(data).execute()
-            return inv_id
-            
-        except Exception as e:
-            print(f"Error creating investigation: {e}")
-            return None
+        """Create new investigation - NO try/except to see real errors"""
+        inv_id = str(uuid.uuid4())
+        data = {
+            "id": inv_id,
+            "user_id": user_id,
+            "client_name": client_name,
+            "description": description,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        self.client.table("investigations").insert(data).execute()
+        return inv_id
     
     def get_all_investigations(self, user_id):
         """Get all investigations for a user"""
