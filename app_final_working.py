@@ -1229,47 +1229,47 @@ elif st.session_state.page == "❓ שאלות":
                 
                 if fresh_claude:
                     with st.spinner("מחפש מידע..."):
-                try:
-                    # Build context with company info if specific companies selected
-                    company_context = ""
-                    if selected_companies:
-                        company_context = "\n\nמידע על החברות שנבחרו:\n"
-                        for company in selected_companies:
-                            if company in COMPANIES_INFO:
-                                info = COMPANIES_INFO[company]
-                                company_context += f"""
+                        try:
+                            # Build context with company info if specific companies selected
+                            company_context = ""
+                            if selected_companies:
+                                company_context = "\n\nמידע על החברות שנבחרו:\n"
+                                for company in selected_companies:
+                                    if company in COMPANIES_INFO:
+                                        info = COMPANIES_INFO[company]
+                                        company_context += f"""
 \n{company} ({info['full_name']}):
 - אתר: {info['website']}
 - טלפון: {info['phone']}
 - יתרונות: {', '.join(info['strengths'])}
 - ידועה ב: {', '.join(info['known_for'])}
 """
-                    
-                    # Add nispach info if question mentions specific nispach
-                    import re
-                    nispach_match = re.search(r'נספח\s*(\d+[/-]?\d*)', query)
-                    nispach_context = ""
-                    
-                    if nispach_match:
-                        nispach_number = nispach_match.group(1)
-                        nispach_data = get_nispach_info(nispach_number)
-                        if nispach_data:
-                            nispach_context = f"""
+                            
+                            # Add nispach info if question mentions specific nispach
+                            import re
+                            nispach_match = re.search(r'נספח\s*(\d+[/-]?\d*)', query)
+                            nispach_context = ""
+                            
+                            if nispach_match:
+                                nispach_number = nispach_match.group(1)
+                                nispach_data = get_nispach_info(nispach_number)
+                                if nispach_data:
+                                    nispach_context = f"""
 \nמידע על נספח {nispach_number} - {nispach_data['name']}:
 תיאור: {nispach_data['description']}
 כולל: {', '.join(nispach_data['includes'])}
 שיעורי החזר: {', '.join([f'{k}: {v}' for k, v in nispach_data.get('reimbursement', {}).items()])}
 מגבלות: {', '.join([f'{k}: {v}' for k, v in nispach_data.get('limits', {}).items()])}
 """
-                    
-                    # Check for service mentions
-                    services_context = ""
-                    if any(word in query.lower() for word in ['mri', 'ct', 'בדיקה', 'ייעוץ', 'טיפול']):
-                        services_context = "\n\nמידע נוסף מבסיס הנתונים שלנו:\n"
-                        for num, data in list(NISPACH_INFO.items())[:5]:  # Top 5 relevant
-                            services_context += f"- נספח {num} ({data['name']}): {data['description']}\n"
-                    
-                    system_prompt = """אתה יועץ ביטוח מקצועי ישראלי. תפקידך לספק מידע כללי ומקצועי על ביטוחים.
+                            
+                            # Check for service mentions
+                            services_context = ""
+                            if any(word in query.lower() for word in ['mri', 'ct', 'בדיקה', 'ייעוץ', 'טיפול']):
+                                services_context = "\n\nמידע נוסף מבסיס הנתונים שלנו:\n"
+                                for num, data in list(NISPACH_INFO.items())[:5]:  # Top 5 relevant
+                                    services_context += f"- נספח {num} ({data['name']}): {data['description']}\n"
+                            
+                            system_prompt = """אתה יועץ ביטוח מקצועי ישראלי. תפקידך לספק מידע כללי ומקצועי על ביטוחים.
 
 כללים:
 1. ספק מידע מבוסס על הידע שלך ועל המידע שנמסר לך
@@ -1289,30 +1289,30 @@ elif st.session_state.page == "❓ שאלות":
 
 ### ⚠️ חשוב לזכור
 [נקודות חשובות להתייחסות]"""
-                    
-                    user_content = f"""שאלה: {query}
+                            
+                            user_content = f"""שאלה: {query}
 {company_context}
 {nispach_context}
 {services_context}
 
 ענה על השאלה בצורה מקצועית ומפורטת. אם יש מידע ספציפי על חברות או נספחים - שלב אותו בתשובה."""
-                    
-                    response = fresh_claude.messages.create(
-                        model="claude-sonnet-4-20250514",
-                        max_tokens=2000,
-                        system=system_prompt,
-                        messages=[{"role": "user", "content": user_content}]
-                    )
-                    
-                    answer = response.content[0].text
-                    st.markdown("### 💡 תשובה:")
-                    st.success(answer)
-                    
-                    # Save to history with special marker for general questions
-                    db.save_qa(st.session_state.current_investigation_id, query, answer, ["מידע כללי"])
-                    
-                except Exception as e:
-                    st.error(f"❌ שגיאה: {str(e)}")
+                            
+                            response = fresh_claude.messages.create(
+                                model="claude-sonnet-4-20250514",
+                                max_tokens=2000,
+                                system=system_prompt,
+                                messages=[{"role": "user", "content": user_content}]
+                            )
+                            
+                            answer = response.content[0].text
+                            st.markdown("### 💡 תשובה:")
+                            st.success(answer)
+                            
+                            # Save to history with special marker for general questions
+                            db.save_qa(st.session_state.current_investigation_id, query, answer, ["מידע כללי"])
+                            
+                        except Exception as e:
+                            st.error(f"❌ שגיאה: {str(e)}")
 
 elif st.session_state.page == "⚖️ השוואה":
     st.title("⚖️ השוואה")
@@ -1340,20 +1340,20 @@ elif st.session_state.page == "⚖️ השוואה":
                     
                     if fresh_claude:
                         with st.spinner("מכין השוואה..."):
-                    try:
-                        selected_ids = [policy_options[name] for name in selected_names]
-                        all_texts = []
-                        
-                        for name, pol_id in zip(selected_names, selected_ids):
-                            full_text = db.get_all_text(pol_id)
-                            all_texts.append(f"=== {name} ===\n{full_text[:6000]}")
-                        
-                        combined = "\n\n".join(all_texts)
-                        
-                        response = fresh_claude.messages.create(
-                            model="claude-sonnet-4-20250514",
-                            max_tokens=2500,
-                            system="""מומחה השוואת פוליסות. הכן השוואה מקיפה.
+                            try:
+                                selected_ids = [policy_options[name] for name in selected_names]
+                                all_texts = []
+                                
+                                for name, pol_id in zip(selected_names, selected_ids):
+                                    full_text = db.get_all_text(pol_id)
+                                    all_texts.append(f"=== {name} ===\n{full_text[:6000]}")
+                                
+                                combined = "\n\n".join(all_texts)
+                                
+                                response = fresh_claude.messages.create(
+                                    model="claude-sonnet-4-20250514",
+                                    max_tokens=2500,
+                                    system="""מומחה השוואת פוליסות. הכן השוואה מקיפה.
 
 פורמט:
 # 📊 השוואה
@@ -1366,18 +1366,18 @@ elif st.session_state.page == "⚖️ השוואה":
 ## 💵 השתתפות עצמית
 
 ## 🎯 המלצה""",
-                            messages=[{"role": "user", "content": f"""השווה:
+                                    messages=[{"role": "user", "content": f"""השווה:
 
 {combined}"""}]
-                        )
-                        
-                        comparison = response.content[0].text
-                        st.markdown(comparison)
-                        
-                        db.save_qa(st.session_state.current_investigation_id, "השוואה מפורטת", 
-                                  comparison, selected_names)
-                    except Exception as e:
-                        st.error(f"❌ {str(e)}")
+                                )
+                                
+                                comparison = response.content[0].text
+                                st.markdown(comparison)
+                                
+                                db.save_qa(st.session_state.current_investigation_id, "השוואה מפורטת", 
+                                          comparison, selected_names)
+                            except Exception as e:
+                                st.error(f"❌ {str(e)}")
 
 elif st.session_state.page == "📚 מדריך נספחים":
     st.title("📚 מדריך נספחים - מה כל נספח מכסה?")
