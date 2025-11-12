@@ -1118,13 +1118,26 @@ elif st.session_state.page == "❓ שאלות":
                                 try:
                                     # Check if question is about a specific nispach
                                     import re
-                                    nispach_match = re.search(r'נספח\s*(\d+[/-]?\d*)', query)
-                                    nispach_info_text = ""
+                                    
+                                    # Try multiple patterns to detect nispach numbers
                                     nispach_number = None
+                                    nispach_info_text = ""
+                                    
+                                    # Pattern 1: "נספח" followed by number (with comma, slash, or dash)
+                                    match1 = re.search(r'נספח\s*([\d,/\-]+)', query)
+                                    if match1:
+                                        nispach_number = match1.group(1).replace(',', '/')  # Convert comma to slash
+                                    
+                                    # Pattern 2: Just a 3-4 digit number (like "6790" or "755")
+                                    # Only if no nispach_number found yet AND query mentions company
+                                    if not nispach_number:
+                                        company_mentioned = any(comp in query for comp in ["הפניקס", "פניקס", "הפקניס", "כלל", "הראל", "מגדל", "מנורה", "איילון"])
+                                        if company_mentioned:
+                                            match2 = re.search(r'\b(\d{3,5})\b', query)
+                                            if match2:
+                                                nispach_number = match2.group(1)
                                 
-                                    if nispach_match:
-                                        nispach_number = nispach_match.group(1)
-                                        
+                                    if nispach_number:
                                         # ALWAYS add info from our dictionary if available (as general knowledge)
                                         nispach_data = get_nispach_info(nispach_number)
                                         if nispach_data:
@@ -1158,7 +1171,7 @@ elif st.session_state.page == "❓ שאלות":
                                         services_mentioned.append('ייעוץ מומחה')
                                     
                                     # If services are mentioned, add relevant nispach info
-                                    if services_mentioned and not nispach_match:
+                                    if services_mentioned and not nispach_number:
                                         # Find relevant nispachim
                                         relevant_nispachim = []
                                         for num, data in NISPACH_INFO.items():
