@@ -514,14 +514,19 @@ def init_connections():
         st.stop()
     
     db = SupabaseDatabase(url=url, key=key)
-    # storage_client = SupabaseStorage(url=url, key=key)  # Not used - using local storage for PDFs
     
     # Initialize Claude
     api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "").strip()
     claude = None
     if api_key:
-        try: claude = Anthropic(api_key=api_key)
-        except: pass
+        try:
+            claude = Anthropic(api_key=api_key)
+            st.sidebar.success("✅ Claude API connected!")
+        except Exception as e:
+            st.error(f"❌ Error initializing Claude: {str(e)}")
+            st.sidebar.error(f"Claude API Error: {str(e)[:100]}")
+    else:
+        st.sidebar.warning("⚠️ ANTHROPIC_API_KEY not found in secrets")
     
     return db, claude
 
