@@ -542,12 +542,12 @@ if not st.session_state.authenticated:
             
             if submit:
                 if username and password:
-                    user_id, user_name = db.verify_user(username, password)
-                    if user_id:
+                    user_data = db.verify_user(username, password)
+                    if user_data:
                         st.session_state.authenticated = True
-                        st.session_state.user_id = user_id
-                        st.session_state.username = user_name
-                        st.success(f"שלום {user_name}!")
+                        st.session_state.user_id = user_data["id"]
+                        st.session_state.username = user_data["username"]
+                        st.success(f"שלום {user_data['username']}!")
                         st.rerun()
                     else:
                         st.error("שם משתמש או סיסמה שגויים")
@@ -698,10 +698,27 @@ with st.sidebar:
     with st.expander("➕ חדש", expanded=not st.session_state.current_investigation_id):
         client_name = st.text_input("לקוח")
         if st.button("צור", type="primary", use_container_width=True):
+            st.write(f"DEBUG: Button clicked! client_name = '{client_name}'")
+            st.write(f"DEBUG: user_id = {st.session_state.user_id}")
+            
             if client_name:
-                inv_id = db.create_investigation(st.session_state.user_id, client_name, "")
-                st.session_state.current_investigation_id = inv_id
-                st.rerun()
+                st.write("DEBUG: About to call create_investigation...")
+                try:
+                    inv_id = db.create_investigation(st.session_state.user_id, client_name, "")
+                    st.write(f"DEBUG: create_investigation returned: {inv_id}")
+                    
+                    if inv_id:
+                        st.session_state.current_investigation_id = inv_id
+                        st.success(f"✅ נוצר! ID: {inv_id}")
+                        st.rerun()
+                    else:
+                        st.error("❌ create_investigation returned None")
+                except Exception as e:
+                    st.error(f"❌ Exception: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+            else:
+                st.warning("⚠️ אין שם לקוח")
     
     st.markdown("---")
     investigations = db.get_all_investigations(st.session_state.user_id)
