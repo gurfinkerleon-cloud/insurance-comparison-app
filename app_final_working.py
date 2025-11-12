@@ -1072,12 +1072,12 @@ elif st.session_state.page == "❓ שאלות":
                                     nispach_info_text = ""
                                 
                                     if nispach_match:
-                                nispach_number = nispach_match.group(1)
-                                nispach_data = get_nispach_info(nispach_number)
-                                
-                                if nispach_data:
-                                    # Build detailed nispach info including reimbursement
-                                    nispach_info_text = f"""
+                                        nispach_number = nispach_match.group(1)
+                                        nispach_data = get_nispach_info(nispach_number)
+                                        
+                                        if nispach_data:
+                                            # Build detailed nispach info including reimbursement
+                                            nispach_info_text = f"""
 
 📋 מידע כללי על נספח {nispach_number} - {nispach_data['name']}:
 
