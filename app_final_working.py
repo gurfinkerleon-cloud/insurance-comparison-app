@@ -20,6 +20,7 @@ except ImportError:
 
 load_dotenv()
 
+# Force redeploy - v2.1 - Fixed Phoenix detection (fnx4u)
 st.set_page_config(page_title="השוואת פוליסות", page_icon="📄", layout="wide")
 
 st.markdown("""
