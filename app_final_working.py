@@ -997,6 +997,12 @@ elif st.session_state.page == "📤 העלאה":
                 else:
                     detected_company = detect_company(text)
                     
+                    # DEBUG: Show detection details
+                    st.write("🔍 DEBUG INFO:")
+                    st.write(f"- fnx4u in text: {'fnx4u' in text.lower()}")
+                    st.write(f"- *3455 in text: {'*3455' in text}")
+                    st.write(f"- Detected: {detected_company}")
+                    
                     if detected_company:
                         count = db.get_company_count(st.session_state.current_investigation_id, detected_company)
                         if count == 0:
