@@ -444,8 +444,8 @@ def extract_text_from_pdf(pdf_file_or_bytes):
     except Exception as e:
         return f"❌ שגיאה בקריאת PDF: {str(e)}", 0
 
-def detect_company(text):
-    """Detect insurance company from PDF text with priority indicators"""
+def detect_company_v2(text):
+    """Detect insurance company from PDF text with priority indicators - v2 with fnx4u fix"""
     text_lower = text.lower()
     
     # Get first 2000 characters (header area where logo/company name usually appears)
@@ -995,7 +995,7 @@ elif st.session_state.page == "📤 העלאה":
                     - נסה לשמור את הקובץ מחדש מהמקור
                     """)
                 else:
-                    detected_company = detect_company(text)
+                    detected_company = detect_company_v2(text)
                     
                     # DEBUG: Show detection details
                     st.write("🔍 DEBUG INFO:")
