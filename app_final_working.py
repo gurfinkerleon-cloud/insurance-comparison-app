@@ -446,6 +446,11 @@ def extract_text_from_pdf(pdf_file_or_bytes):
 
 def detect_company_v2(text):
     """Detect insurance company from PDF text with priority indicators - v2 with fnx4u fix"""
+    
+    # HARDCODED FIX: If text contains fnx4u, it's Phoenix - NO QUESTIONS ASKED
+    if 'fnx4u' in text.lower():
+        return "הפניקס"
+    
     text_lower = text.lower()
     
     # Get first 2000 characters (header area where logo/company name usually appears)
