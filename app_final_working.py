@@ -998,13 +998,25 @@ elif st.session_state.page == "📤 העלאה":
                     detected_company = detect_company_v2(text)
                     
                     # DEBUG: Show detection details
-                    st.write("🔍 DEBUG INFO:")
+                    st.write("🔍 DEBUG INFO (v2.3 - FIXED):")
                     st.write(f"- fnx4u in text: {'fnx4u' in text.lower()}")
                     st.write(f"- *3455 in text: {'*3455' in text}")
                     st.write(f"- Detected: {detected_company}")
                     st.write(f"- Text length: {len(text)}")
-                    st.write(f"- First 500 chars: {text[:500]}")
-                    st.write(f"- Last 500 chars: {text[-500:]}")
+                    
+                    # MANUAL SCORING DEBUG
+                    phoenix_manual = 0
+                    clal_manual = 0
+                    if 'fnx4u' in text.lower():
+                        phoenix_manual += 10
+                    if '*3455' in text:
+                        phoenix_manual += 8
+                    net_klal = text.count('כלל') - text.count('כללי')
+                    clal_manual = net_klal * 3
+                    
+                    st.write(f"- Manual Phoenix score: {phoenix_manual}")
+                    st.write(f"- Manual Clal score: {clal_manual}")
+                    st.write(f"- Should detect: {'Phoenix' if phoenix_manual > clal_manual else 'Clal'}")
                     
                     if detected_company:
                         count = db.get_company_count(st.session_state.current_investigation_id, detected_company)
