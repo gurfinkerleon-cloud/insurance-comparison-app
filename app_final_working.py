@@ -11,6 +11,7 @@ import json
 import shutil
 import re
 import hashlib
+import traceback
 
 try:
     import pdfplumber
@@ -753,7 +754,7 @@ def extract_nispach_numbers(text):
 
 def search_nispach_online_v2(nispach_number, client):
     """
-    חיפוש נספח באינטרנט באמצעות Claude API
+    חיפוש נספח באינטרנט באמצעות Claude API עם Web Search REAL
     
     Args:
         nispach_number: מספר הנספח לחיפוש
@@ -763,15 +764,95 @@ def search_nispach_online_v2(nispach_number, client):
         dict: מידע על הנספח או None אם לא נמצא
     """
     try:
-        # שאלה לחיפוש
-        search_query = f"נספח {nispach_number} ביטוח בריאות ישראל מה זה"
+        # Use Claude with web_search tool to find information
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            tools=[{
+                "name": "web_search",
+                "description": "Search the web for information",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }],
+            messages=[{
+                "role": "user",
+                "content": f"""חפש באינטרנט מידע על נספח {nispach_number} בביטוח בריאות בישראל.
+
+חפש באתרים של:
+- חברות הביטוח (הראל, מגדל, כלל, פניקס, מנורה)
+- רשות שוק ההון
+- אתרי השוואת מחירים
+
+אני צריך לדעת:
+1. מה שם הנספח?
+2. מה הוא מכסה?
+3. אילו שירותים כלולים?
+
+תן לי תשובה מסודרת בפורמט הזה:
+
+שם: [שם הנספח]
+תיאור: [תיאור קצר]
+כולל: [רשימה של שירותים]
+
+אם לא מצאת מידע כלל - אמר "לא נמצא מידע"."""
+            }]
+        )
         
-        # Note: Web search would be implemented here when tool is available
-        # For now, return None
+        # Process the response
+        answer_text = ""
+        
+        for block in response.content:
+            if block.type == "text":
+                answer_text += block.text
+        
+        # If we found information
+        if answer_text and "לא נמצא" not in answer_text and len(answer_text) > 50:
+            # Try to parse the structured response
+            lines = answer_text.split('\n')
+            name = f"נספח {nispach_number}"
+            description = ""
+            includes = []
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith("שם:"):
+                    name = line.replace("שם:", "").strip()
+                elif line.startswith("תיאור:"):
+                    description = line.replace("תיאור:", "").strip()
+                elif line.startswith("כולל:"):
+                    includes_text = line.replace("כולל:", "").strip()
+                    includes = [x.strip() for x in includes_text.split(',') if x.strip()]
+            
+            # If we couldn't parse, use the whole text as description
+            if not description:
+                description = answer_text[:500]
+            
+            return {
+                "name": name,
+                "description": description,
+                "includes": includes,
+                "reimbursement": {},
+                "limits": {},
+                "notes": "ℹ️ מידע זה נמצא באמצעות חיפוש באינטרנט ועשוי להשתנות. מומלץ לאמת עם חברת הביטוח.",
+                "found_online": True,
+                "source": "web_search",
+                "raw_search_result": answer_text
+            }
+        
         return None
         
     except Exception as e:
-        st.warning(f"לא הצלחנו לחפש באינטרנט: {str(e)}")
+        import traceback
+        st.warning(f"שגיאה בחיפוש באינטרנט: {str(e)}")
+        st.code(traceback.format_exc())
         return None
 
 
