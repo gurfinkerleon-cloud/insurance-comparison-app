@@ -1690,30 +1690,42 @@ elif st.session_state.page == "📚 מדריך נספחים":
             # NOT FOUND IN LOCAL DATABASE - TRY WEB SEARCH
             st.warning("❌ לא נמצא במאגר המקומי")
             
+            # Extract digits from search term (handle cases like "6790?" or "נספח 6790")
+            digits_only = ''.join(filter(str.isdigit, search_term))
+            
+            # Debug info
+            st.caption(f"🔍 DEBUG: מספר שחולץ = '{digits_only}' (אורך: {len(digits_only)})")
+            
             # Check if it looks like a nispach number (4-6 digits)
-            if search_term.isdigit() and len(search_term) >= 4 and len(search_term) <= 6:
-                st.info("🔍 מחפש באינטרנט...")
+            if digits_only and len(digits_only) >= 4 and len(digits_only) <= 6:
+                st.info(f"🔍 מחפש מידע על נספח {digits_only} באינטרנט...")
                 
-                # Get Claude client
-                if claude_client:
-                    with st.spinner(f"מחפש מידע על נספח {search_term} באינטרנט..."):
-                        web_result = get_nispach_info_with_search(
-                            nispach_number=search_term,
-                            use_online_search=True,
-                            anthropic_client=claude_client
-                        )
-                        
-                        if web_result and not web_result.get('unknown'):
-                            st.success("✅ נמצא מידע באינטרנט!")
-                            formatted = format_nispach_response(web_result)
-                            st.markdown(formatted)
-                        else:
-                            st.error(f"❌ לא הצלחנו למצוא מידע על נספח {search_term}")
-                            st.info("💡 נסה לחפש באתר חברת הביטוח או צור קשר עם נציג")
+                # Debug: Check if claude_client exists
+                if claude_client is None:
+                    st.error("❌ Claude API לא מחובר!")
+                    st.info("🔧 פתרון: בדוק את ה-ANTHROPIC_API_KEY בהגדרות Streamlit Cloud")
                 else:
-                    st.error("❌ שירות החיפוש באינטרנט לא זמין כרגע")
+                    st.success("✅ Claude API מחובר - מתחיל חיפוש...")
+                    
+                    with st.spinner(f"מחפש באינטרנט..."):
+                        try:
+                            web_result = get_nispach_info_with_search(
+                                nispach_number=digits_only,
+                                use_online_search=True,
+                                anthropic_client=claude_client
+                            )
+                            
+                            if web_result and not web_result.get('unknown'):
+                                st.success("✅ נמצא מידע באינטרנט!")
+                                formatted = format_nispach_response(web_result)
+                                st.markdown(formatted)
+                            else:
+                                st.error(f"❌ לא הצלחנו למצוא מידע על נספח {digits_only}")
+                                st.info("💡 **עצות:**\n- נסה לחפש באתר חברת הביטוח\n- צור קשר עם נציג הביטוח\n- בדוק אם מספר הנספח נכון")
+                        except Exception as e:
+                            st.error(f"❌ שגיאה בחיפוש: {str(e)}")
             else:
-                st.info("💡 נסה לחפש לפי מספר נספח (4-6 ספרות)")
+                st.info("💡 נסה לחפש לפי מספר נספח (4-6 ספרות)\n\nדוגמאות: 8713, 5409, 6792")
     
     st.markdown("---")
     st.markdown("### 📑 רשימת כל הנספחים במאגר")
