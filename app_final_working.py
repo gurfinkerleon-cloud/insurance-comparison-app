@@ -1646,6 +1646,7 @@ elif st.session_state.page == "📚 מדריך נספחים":
     
     # UPDATED: Show new count
     st.info(f"📊 **במאגר שלנו יש מידע על {len(NISPACH_INFO_EXPANDED)} נספחים!**")
+    st.caption("💡 אם נספח לא נמצא במאגר - נחפש אותו באינטרנט אוטומטית!")
     
     st.markdown("---")
     
@@ -1663,7 +1664,7 @@ elif st.session_state.page == "📚 מדריך נספחים":
                 found_nispachim.append((nispach_num, data))
         
         if found_nispachim:
-            st.success(f"נמצאו {len(found_nispachim)} תוצאות:")
+            st.success(f"✅ נמצאו {len(found_nispachim)} תוצאות במאגר המקומי:")
             for nispach_num, data in found_nispachim:
                 with st.expander(f"📋 נספח {nispach_num} - {data['name']}", expanded=True):
                     st.markdown(f"**תיאור:** {data['description']}")
@@ -1686,10 +1687,36 @@ elif st.session_state.page == "📚 מדריך נספחים":
                     if 'notes' in data:
                         st.info(f"💡 {data['notes']}")
         else:
-            st.warning("לא נמצאו תוצאות")
+            # NOT FOUND IN LOCAL DATABASE - TRY WEB SEARCH
+            st.warning("❌ לא נמצא במאגר המקומי")
+            
+            # Check if it looks like a nispach number (4-6 digits)
+            if search_term.isdigit() and len(search_term) >= 4 and len(search_term) <= 6:
+                st.info("🔍 מחפש באינטרנט...")
+                
+                # Get Claude client
+                if claude_client:
+                    with st.spinner(f"מחפש מידע על נספח {search_term} באינטרנט..."):
+                        web_result = get_nispach_info_with_search(
+                            nispach_number=search_term,
+                            use_online_search=True,
+                            anthropic_client=claude_client
+                        )
+                        
+                        if web_result and not web_result.get('unknown'):
+                            st.success("✅ נמצא מידע באינטרנט!")
+                            formatted = format_nispach_response(web_result)
+                            st.markdown(formatted)
+                        else:
+                            st.error(f"❌ לא הצלחנו למצוא מידע על נספח {search_term}")
+                            st.info("💡 נסה לחפש באתר חברת הביטוח או צור קשר עם נציג")
+                else:
+                    st.error("❌ שירות החיפוש באינטרנט לא זמין כרגע")
+            else:
+                st.info("💡 נסה לחפש לפי מספר נספח (4-6 ספרות)")
     
     st.markdown("---")
-    st.markdown("### 📑 רשימת כל הנספחים")
+    st.markdown("### 📑 רשימת כל הנספחים במאגר")
     
     # Show all nispachim
     all_nispachim = get_all_known_nispachim()
