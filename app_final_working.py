@@ -814,7 +814,11 @@ def search_nispach_online_v2(nispach_number, client):
                 answer_text += block.text
         
         # If we found information
-        if answer_text and "לא נמצא" not in answer_text and len(answer_text) > 50:
+        # Check for "not found" indicators
+        not_found_phrases = ["לא נמצא", "לא מצאתי", "מצטער", "אין מידע", "לא זמין", "sorry", "not found"]
+        found_not_found = any(phrase in answer_text.lower() for phrase in not_found_phrases)
+        
+        if answer_text and not found_not_found and len(answer_text) > 50:
             # Try to parse the structured response
             lines = answer_text.split('\n')
             name = f"נספח {nispach_number}"
@@ -832,8 +836,12 @@ def search_nispach_online_v2(nispach_number, client):
                     includes = [x.strip() for x in includes_text.split(',') if x.strip()]
             
             # If we couldn't parse, use the whole text as description
-            if not description:
+            if not description or len(description) < 20:
                 description = answer_text[:500]
+            
+            # If description is still just "sorry" or similar, return None
+            if len(description) < 30 or any(phrase in description.lower() for phrase in not_found_phrases):
+                return None
             
             return {
                 "name": name,
@@ -1628,7 +1636,27 @@ elif st.session_state.page == "❓ שאלות":
                                     st.error(f"❌ שגיאה: {str(e)}")
     
     else:  # General information mode
-        st.info("💡 **במצב זה אתה יכול לשאול שאלות כלליות על ביטוחים**")
+        st.info("💡 **במצב זה אתה יכול לשאול שאלות כלליות על ביטוחים ללא צורך בפוליסות**")
+        
+        # Optional: Select specific companies to compare
+        with st.expander("🏢 השווה חברות ספציפיות (אופציונלי)"):
+            selected_companies = st.multiselect(
+                "בחר חברות להשוואה:",
+                COMPANIES,
+                help="השאר ריק לשאלה כללית על כל השוק"
+            )
+        
+        # Example questions
+        with st.expander("📝 דוגמאות לשאלות"):
+            st.markdown("""
+            - מה ההבדל בין מגדל להראל בביטוח בריאות?
+            - כמה עולה ביטוח בריאות מקיף לגיל 35?
+            - מה הכיסויים החשובים ביותר בביטוח בריאות?
+            - האם כדאי להוסיף נספח ניתוחים בחו״ל?
+            - מהן החברות עם השירות הטוב ביותר?
+            - השוואת מחירים בין החברות הגדולות
+            - מה זה נספח אמבולטורי ולמה אני צריך אותו?
+            """)
         
         query = st.text_area(
             "שאל שאלה כללית:",
@@ -1637,8 +1665,101 @@ elif st.session_state.page == "❓ שאלות":
         )
         
         if st.button("🔍 שאל", type="primary") and query:
-            # Similar logic but for general questions...
-            st.info("מצב מידע כללי - תשובות מבוססות ידע כללי על ביטוחים")
+            # Re-initialize Claude
+            api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "").strip()
+            if not api_key:
+                st.error("❌ API key not configured")
+            else:
+                try:
+                    fresh_claude = Anthropic(api_key=api_key)
+                except Exception as e:
+                    st.error(f"❌ Failed to initialize Claude: {str(e)}")
+                    fresh_claude = None
+                
+                if fresh_claude:
+                    with st.spinner("מחפש מידע..."):
+                        try:
+                            # Build context with company info if specific companies selected
+                            company_context = ""
+                            if selected_companies:
+                                company_context = "\n\nמידע על החברות שנבחרו:\n"
+                                for company in selected_companies:
+                                    if company in COMPANIES_INFO:
+                                        info = COMPANIES_INFO[company]
+                                        company_context += f"""
+\n{company} ({info['full_name']}):
+- אתר: {info['website']}
+- טלפון: {info['phone']}
+- יתרונות: {', '.join(info['strengths'])}
+- ידועה ב: {', '.join(info['known_for'])}
+"""
+                            
+                            # Add nispach info if question mentions specific nispach
+                            nispach_numbers = extract_nispach_numbers(query)
+                            nispach_context = ""
+                            
+                            if nispach_numbers:
+                                st.info(f"🔍 זיהיתי שאלה על נספחים: {', '.join(nispach_numbers)}")
+                                for nispach_num in nispach_numbers:
+                                    nispach_data = get_nispach_info_with_search(
+                                        nispach_number=nispach_num,
+                                        use_online_search=False,  # Don't search web for general mode
+                                        anthropic_client=fresh_claude
+                                    )
+                                    if nispach_data and not nispach_data.get('unknown'):
+                                        nispach_context += f"""
+\nמידע על נספח {nispach_num} - {nispach_data['name']}:
+תיאור: {nispach_data['description']}
+"""
+                                        if nispach_data.get('includes'):
+                                            nispach_context += f"כולל: {', '.join(nispach_data['includes'])}\n"
+                            
+                            system_prompt = """אתה יועץ ביטוח מקצועי ישראלי. תפקידך לספק מידע כללי ומקצועי על ביטוחים.
+
+כללים:
+1. ספק מידע מבוסס על הידע שלך ועל המידע שנמסר לך
+2. אם מדובר בהשוואה בין חברות - היה אובייקטיבי
+3. הסבר מושגים בצורה פשוטה וברורה
+4. ציין אם המידע הוא כללי או משתנה בין חברות
+5. המלץ תמיד לבדוק עם חברת הביטוח את הפרטים המדויקים
+6. אם יש מידע על מחירים - תן טווחים כלליים
+7. הדגש את הנקודות החשובות ביותר
+8. ענה בעברית פשוטה וברורה
+
+פורמט תשובה מומלץ:
+### 📋 תשובה
+[תשובה ישירה לשאלה]
+
+### 💡 מידע נוסף
+[פרטים רלוונטיים נוספים]
+
+### ⚠️ חשוב לזכור
+[נקודות חשובות להתייחסות]"""
+                            
+                            user_content = f"""שאלה: {query}
+{company_context}
+{nispach_context}
+
+ענה על השאלה בצורה מקצועית ומפורטת. אם יש מידע ספציפי על חברות או נספחים - שלב אותו בתשובה."""
+                            
+                            response = fresh_claude.messages.create(
+                                model="claude-sonnet-4-20250514",
+                                max_tokens=2000,
+                                system=system_prompt,
+                                messages=[{"role": "user", "content": user_content}]
+                            )
+                            
+                            answer = response.content[0].text
+                            st.markdown("### 💡 תשובה:")
+                            st.success(answer)
+                            
+                            # Save to history with special marker for general questions
+                            db.save_qa(st.session_state.current_investigation_id, query, answer, ["מידע כללי"])
+                            
+                        except Exception as e:
+                            st.error(f"❌ שגיאה: {str(e)}")
+                            import traceback
+                            st.code(traceback.format_exc())
 
 elif st.session_state.page == "📚 מדריך נספחים":
     st.title("📚 מדריך נספחים - מה כל נספח מכסה?")
