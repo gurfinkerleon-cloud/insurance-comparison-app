@@ -711,8 +711,54 @@ st.sidebar.info(f"📚 במאגר: {len(NISPACH_INFO_EXPANDED)} נספחים")
 # ============================================================================
 
 if not st.session_state.authenticated:
-    st.title("🔐 השוואת פוליסות ביטוח")
-    
+    st.markdown("""
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%) !important;
+    font-family: 'Inter', sans-serif !important;
+}
+[data-testid="stHeader"] { background: transparent !important; }
+section[data-testid="stSidebar"] {
+    background: rgba(15,12,41,0.88) !important;
+    backdrop-filter: blur(20px);
+    border-left: 1px solid rgba(255,255,255,0.08) !important;
+}
+.main .block-container { background: transparent !important; }
+.login-wrap {
+    direction: rtl;
+    text-align: center;
+    padding: 3rem 1rem 2rem;
+}
+.login-title {
+    font-family: 'Inter', sans-serif;
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 800;
+    background: linear-gradient(135deg, #ffffff 0%, #c4b5fd 45%, #93c5fd 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0 0 0.5rem;
+}
+.login-sub {
+    font-family: 'Inter', sans-serif;
+    color: rgba(255,255,255,0.5);
+    font-size: 1rem;
+    margin: 0;
+}
+/* Tab + form text visible on dark bg */
+.stTabs [data-baseweb="tab-list"] { background: rgba(255,255,255,0.05); border-radius: 12px; }
+.stTabs [data-baseweb="tab"] { color: rgba(255,255,255,0.6) !important; }
+.stTabs [aria-selected="true"] { color: #c4b5fd !important; }
+label, .stTextInput label { color: rgba(255,255,255,0.75) !important; }
+.stTextInput input { background: rgba(255,255,255,0.07) !important; color: #fff !important; border-color: rgba(255,255,255,0.15) !important; border-radius: 10px !important; }
+</style>
+<div class="login-wrap">
+    <h1 class="login-title">🔐 השוואת פוליסות ביטוח</h1>
+    <p class="login-sub">ניתוח חכם של פוליסות ביטוח בעזרת AI</p>
+</div>
+""", unsafe_allow_html=True)
+
     tab1, tab2, tab3 = st.tabs(["🔑 כניסה", "✨ הרשמה", "🔓 שכחתי סיסמה"])
     
     with tab1:
@@ -931,217 +977,187 @@ if st.session_state.page == "🏠 בית":
     total_inv = len(all_inv)
     recent_clients = [inv['client_name'] for inv in all_inv[:2]]
     recent_html = "".join(
-        f'<span class="recent-tag">{name}</span>' for name in recent_clients
-    ) if recent_clients else '<span class="recent-tag-empty">אין חקירות עדיין</span>'
+        f'<span class="dash-recent-tag">{name}</span>' for name in recent_clients
+    ) if recent_clients else '<span class="dash-recent-empty">אין חקירות עדיין</span>'
 
-    st.markdown("""
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        /* ── Background gradient on main viewport ── */
-        [data-testid="stAppViewContainer"] {
-            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%) !important;
-            font-family: 'Inter', sans-serif !important;
-        }
-        [data-testid="stHeader"] {
-            background: transparent !important;
-            backdrop-filter: blur(12px);
-        }
-        section[data-testid="stSidebar"] {
-            background: rgba(15, 12, 41, 0.85) !important;
-            backdrop-filter: blur(20px);
-            border-left: 1px solid rgba(255,255,255,0.08) !important;
-        }
-        .main .block-container {
-            background: transparent !important;
-            padding-top: 1.5rem !important;
-        }
+    # Build CSS as a plain string (no f-string → no need to escape every { })
+    _dashboard_css = """
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%) !important;
+    font-family: 'Inter', sans-serif !important;
+}
+[data-testid="stHeader"] {
+    background: transparent !important;
+    backdrop-filter: blur(12px);
+}
+section[data-testid="stSidebar"] {
+    background: rgba(15, 12, 41, 0.88) !important;
+    backdrop-filter: blur(20px);
+    border-left: 1px solid rgba(255,255,255,0.08) !important;
+}
+.main .block-container {
+    background: transparent !important;
+    padding-top: 1.5rem !important;
+}
+.dash-hero {
+    direction: rtl;
+    text-align: center;
+    padding: 3rem 1rem 2.5rem;
+}
+.dash-badge {
+    display: inline-block;
+    background: rgba(167,139,250,0.12);
+    border: 1px solid rgba(167,139,250,0.28);
+    color: #a78bfa;
+    padding: 0.3rem 1.1rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    margin-bottom: 1.4rem;
+    text-transform: uppercase;
+}
+.dash-title {
+    font-family: 'Inter', sans-serif;
+    font-size: clamp(2.2rem, 5vw, 3.6rem);
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #ffffff 0%, #c4b5fd 45%, #93c5fd 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0 0 1rem;
+}
+.dash-subtitle {
+    font-family: 'Inter', sans-serif;
+    font-size: 1.1rem;
+    color: rgba(255,255,255,0.55);
+    font-weight: 400;
+    margin: 0;
+}
+.dash-subtitle b {
+    color: #c4b5fd;
+    font-weight: 600;
+}
+.dash-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.4rem;
+    direction: rtl;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 1rem 2.5rem;
+}
+.dash-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 20px;
+    padding: 1.8rem 1.6rem;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.10);
+    text-align: right;
+    direction: rtl;
+    cursor: default;
+    transition: transform 0.28s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.28s ease, border-color 0.28s ease;
+}
+.dash-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+}
+.dash-card:hover {
+    transform: translateY(-7px) scale(1.025);
+    box-shadow: 0 24px 64px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.14);
+}
+.dash-card-blue   { background: rgba(96,165,250,0.07);  }
+.dash-card-purple { background: rgba(167,139,250,0.07); }
+.dash-card-teal   { background: rgba(52,211,153,0.07);  }
+.dash-card-blue:hover   { border-color: rgba(96,165,250,0.45)  !important; }
+.dash-card-purple:hover { border-color: rgba(167,139,250,0.45) !important; }
+.dash-card-teal:hover   { border-color: rgba(52,211,153,0.45)  !important; }
+.dash-icon {
+    font-size: 1.9rem;
+    display: block;
+    margin-bottom: 1rem;
+    line-height: 1;
+}
+.dash-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    margin-bottom: 0.45rem;
+}
+.dash-value {
+    font-family: 'Inter', sans-serif;
+    font-size: 3.2rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: #fff;
+}
+.dash-card-blue   .dash-value { background: linear-gradient(135deg,#93c5fd,#818cf8); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.dash-card-purple .dash-value { background: linear-gradient(135deg,#c4b5fd,#e879f9); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.dash-recent-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.6rem;
+}
+.dash-recent-tag {
+    background: rgba(52,211,153,0.14);
+    border: 1px solid rgba(52,211,153,0.32);
+    color: #6ee7b7;
+    padding: 0.28rem 0.85rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+.dash-recent-empty {
+    color: rgba(255,255,255,0.3);
+    font-size: 0.82rem;
+}
+</style>
+"""
 
-        /* ── Hero ── */
-        .dashboard-hero {
-            direction: rtl;
-            text-align: center;
-            padding: 3rem 1rem 2.5rem;
-        }
-        .hero-badge {
-            display: inline-block;
-            background: rgba(167, 139, 250, 0.12);
-            border: 1px solid rgba(167, 139, 250, 0.28);
-            color: #a78bfa;
-            padding: 0.3rem 1.1rem;
-            border-radius: 999px;
-            font-size: 0.78rem;
-            font-weight: 600;
-            letter-spacing: 0.08em;
-            margin-bottom: 1.4rem;
-            text-transform: uppercase;
-        }
-        .hero-title {
-            font-family: 'Inter', sans-serif;
-            font-size: clamp(2.2rem, 5vw, 3.6rem);
-            font-weight: 800;
-            line-height: 1.15;
-            letter-spacing: -0.03em;
-            background: linear-gradient(135deg, #ffffff 0%, #c4b5fd 45%, #93c5fd 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin: 0 0 1rem;
-        }
-        .hero-subtitle {
-            font-family: 'Inter', sans-serif;
-            font-size: 1.1rem;
-            color: rgba(255, 255, 255, 0.55);
-            font-weight: 400;
-            letter-spacing: 0.01em;
-            margin: 0;
-        }
-        .hero-subtitle strong {
-            color: #c4b5fd;
-            font-weight: 600;
-        }
-
-        /* ── Stats grid ── */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.4rem;
-            direction: rtl;
-            max-width: 860px;
-            margin: 0 auto;
-            padding: 0 1rem 2.5rem;
-        }
-
-        /* ── Glass card base ── */
-        .glass-card {
-            position: relative;
-            overflow: hidden;
-            border-radius: 20px;
-            padding: 1.8rem 1.6rem;
-            border: 1px solid rgba(255, 255, 255, 0.10);
-            background: rgba(255, 255, 255, 0.06);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-            box-shadow:
-                0 8px 32px rgba(0, 0, 0, 0.35),
-                inset 0 1px 0 rgba(255, 255, 255, 0.10);
-            text-align: right;
-            direction: rtl;
-            cursor: default;
-            transition:
-                transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
-                box-shadow 0.28s ease,
-                border-color 0.28s ease;
-        }
-        /* top shimmer line */
-        .glass-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
-        }
-        .glass-card:hover {
-            transform: translateY(-7px) scale(1.025);
-            box-shadow:
-                0 24px 64px rgba(0, 0, 0, 0.45),
-                inset 0 1px 0 rgba(255, 255, 255, 0.14);
-        }
-
-        /* ── Card accent variants ── */
-        .card-blue  { background: rgba(96, 165, 250, 0.07); }
-        .card-blue:hover  { border-color: rgba(96, 165, 250, 0.45) !important; }
-        .card-purple { background: rgba(167, 139, 250, 0.07); }
-        .card-purple:hover { border-color: rgba(167, 139, 250, 0.45) !important; }
-        .card-teal  { background: rgba(52, 211, 153, 0.07); }
-        .card-teal:hover  { border-color: rgba(52, 211, 153, 0.45) !important; }
-
-        /* ── Card internals ── */
-        .card-icon {
-            font-size: 1.9rem;
-            display: block;
-            margin-bottom: 1rem;
-            line-height: 1;
-        }
-        .card-label {
-            font-family: 'Inter', sans-serif;
-            font-size: 0.72rem;
-            font-weight: 600;
-            color: rgba(255, 255, 255, 0.45);
-            text-transform: uppercase;
-            letter-spacing: 0.10em;
-            margin-bottom: 0.45rem;
-        }
-        .card-value {
-            font-family: 'Inter', sans-serif;
-            font-size: 3.2rem;
-            font-weight: 700;
-            line-height: 1;
-            letter-spacing: -0.04em;
-        }
-        .card-blue  .card-value {
-            background: linear-gradient(135deg, #93c5fd, #818cf8);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        .card-purple .card-value {
-            background: linear-gradient(135deg, #c4b5fd, #e879f9);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        /* ── Recent card tags ── */
-        .recent-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.45rem;
-            margin-top: 0.6rem;
-        }
-        .recent-tag {
-            background: rgba(52, 211, 153, 0.14);
-            border: 1px solid rgba(52, 211, 153, 0.32);
-            color: #6ee7b7;
-            padding: 0.28rem 0.85rem;
-            border-radius: 999px;
-            font-size: 0.82rem;
-            font-weight: 500;
-            letter-spacing: 0.01em;
-        }
-        .recent-tag-empty {
-            color: rgba(255,255,255,0.3);
-            font-size: 0.82rem;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown(f"""
-    <div class="dashboard-hero">
-        <div class="hero-badge">v3.1 &nbsp;·&nbsp; מערכת ניתוח פוליסות</div>
-        <h1 class="hero-title">השוואת פוליסות 🏠</h1>
-        <p class="hero-subtitle">שלום <strong>{st.session_state.username}</strong> — ניתוח חכם של פוליסות ביטוח בעזרת AI</p>
+    # Build the HTML as an f-string (only Python values interpolated, no CSS braces)
+    _dashboard_html = f"""
+<div class="dash-hero">
+    <div class="dash-badge">v3.1 &nbsp;&middot;&nbsp; מערכת ניתוח פוליסות</div>
+    <h1 class="dash-title">השוואת פוליסות 🏠</h1>
+    <p class="dash-subtitle">שלום <b>{st.session_state.username}</b> &mdash; ניתוח חכם של פוליסות ביטוח בעזרת AI</p>
+</div>
+<div class="dash-grid">
+    <div class="dash-card dash-card-blue">
+        <span class="dash-icon">📋</span>
+        <div class="dash-label">פוליסות</div>
+        <div class="dash-value">{total_policies}</div>
     </div>
-
-    <div class="stats-grid">
-        <div class="glass-card card-blue">
-            <span class="card-icon">📋</span>
-            <div class="card-label">פוליסות</div>
-            <div class="card-value">{total_policies}</div>
-        </div>
-
-        <div class="glass-card card-purple">
-            <span class="card-icon">🔍</span>
-            <div class="card-label">החקירות שלי</div>
-            <div class="card-value">{total_inv}</div>
-        </div>
-
-        <div class="glass-card card-teal">
-            <span class="card-icon">⏱️</span>
-            <div class="card-label">חקירות אחרונות</div>
-            <div class="recent-tags">{recent_html}</div>
-        </div>
+    <div class="dash-card dash-card-purple">
+        <span class="dash-icon">🔍</span>
+        <div class="dash-label">החקירות שלי</div>
+        <div class="dash-value">{total_inv}</div>
     </div>
-    """, unsafe_allow_html=True)
+    <div class="dash-card dash-card-teal">
+        <span class="dash-icon">⏱️</span>
+        <div class="dash-label">חקירות אחרונות</div>
+        <div class="dash-recent-tags">{recent_html}</div>
+    </div>
+</div>
+"""
+
+    # Single st.markdown call — CSS + HTML together, unsafe_allow_html required
+    st.markdown(_dashboard_css + _dashboard_html, unsafe_allow_html=True)
 
 
 # ============================================================================
