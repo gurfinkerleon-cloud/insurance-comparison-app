@@ -926,23 +926,222 @@ if not st.session_state.current_investigation_id and st.session_state.page not i
 # ============================================================================
 
 if st.session_state.page == "🏠 בית":
-    st.title("🏠 השוואת פוליסות")
-    st.write(f"שלום **{st.session_state.username}**! 👋")
-    
     all_inv = db.get_all_investigations(st.session_state.user_id)
-    col1, col2 = st.columns(2)
-    with col1: 
-        st.metric("החקירות שלי", len(all_inv))
-    with col2: 
-        st.metric("פוליסות", sum(inv['policy_count'] for inv in all_inv))
-    
-    if all_inv:
-        st.markdown("### 📊 החקירות האחרונות")
-        for inv in all_inv[:5]:
-            with st.expander(f"🔍 {inv['client_name']}"):
-                st.write(f"**פוליסות:** {inv['policy_count']}")
-                st.write(f"**שאלות:** {inv['question_count']}")
-                st.caption(f"נוצר: {inv['created_at']}")
+    total_policies = sum(inv['policy_count'] for inv in all_inv)
+    total_inv = len(all_inv)
+    recent_clients = [inv['client_name'] for inv in all_inv[:2]]
+    recent_html = "".join(
+        f'<span class="recent-tag">{name}</span>' for name in recent_clients
+    ) if recent_clients else '<span class="recent-tag-empty">אין חקירות עדיין</span>'
+
+    st.markdown("""
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* ── Background gradient on main viewport ── */
+        [data-testid="stAppViewContainer"] {
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%) !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+        [data-testid="stHeader"] {
+            background: transparent !important;
+            backdrop-filter: blur(12px);
+        }
+        section[data-testid="stSidebar"] {
+            background: rgba(15, 12, 41, 0.85) !important;
+            backdrop-filter: blur(20px);
+            border-left: 1px solid rgba(255,255,255,0.08) !important;
+        }
+        .main .block-container {
+            background: transparent !important;
+            padding-top: 1.5rem !important;
+        }
+
+        /* ── Hero ── */
+        .dashboard-hero {
+            direction: rtl;
+            text-align: center;
+            padding: 3rem 1rem 2.5rem;
+        }
+        .hero-badge {
+            display: inline-block;
+            background: rgba(167, 139, 250, 0.12);
+            border: 1px solid rgba(167, 139, 250, 0.28);
+            color: #a78bfa;
+            padding: 0.3rem 1.1rem;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            margin-bottom: 1.4rem;
+            text-transform: uppercase;
+        }
+        .hero-title {
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(2.2rem, 5vw, 3.6rem);
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, #ffffff 0%, #c4b5fd 45%, #93c5fd 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin: 0 0 1rem;
+        }
+        .hero-subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.55);
+            font-weight: 400;
+            letter-spacing: 0.01em;
+            margin: 0;
+        }
+        .hero-subtitle strong {
+            color: #c4b5fd;
+            font-weight: 600;
+        }
+
+        /* ── Stats grid ── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.4rem;
+            direction: rtl;
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 0 1rem 2.5rem;
+        }
+
+        /* ── Glass card base ── */
+        .glass-card {
+            position: relative;
+            overflow: hidden;
+            border-radius: 20px;
+            padding: 1.8rem 1.6rem;
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            box-shadow:
+                0 8px 32px rgba(0, 0, 0, 0.35),
+                inset 0 1px 0 rgba(255, 255, 255, 0.10);
+            text-align: right;
+            direction: rtl;
+            cursor: default;
+            transition:
+                transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.28s ease,
+                border-color 0.28s ease;
+        }
+        /* top shimmer line */
+        .glass-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+        }
+        .glass-card:hover {
+            transform: translateY(-7px) scale(1.025);
+            box-shadow:
+                0 24px 64px rgba(0, 0, 0, 0.45),
+                inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        }
+
+        /* ── Card accent variants ── */
+        .card-blue  { background: rgba(96, 165, 250, 0.07); }
+        .card-blue:hover  { border-color: rgba(96, 165, 250, 0.45) !important; }
+        .card-purple { background: rgba(167, 139, 250, 0.07); }
+        .card-purple:hover { border-color: rgba(167, 139, 250, 0.45) !important; }
+        .card-teal  { background: rgba(52, 211, 153, 0.07); }
+        .card-teal:hover  { border-color: rgba(52, 211, 153, 0.45) !important; }
+
+        /* ── Card internals ── */
+        .card-icon {
+            font-size: 1.9rem;
+            display: block;
+            margin-bottom: 1rem;
+            line-height: 1;
+        }
+        .card-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.45);
+            text-transform: uppercase;
+            letter-spacing: 0.10em;
+            margin-bottom: 0.45rem;
+        }
+        .card-value {
+            font-family: 'Inter', sans-serif;
+            font-size: 3.2rem;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: -0.04em;
+        }
+        .card-blue  .card-value {
+            background: linear-gradient(135deg, #93c5fd, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .card-purple .card-value {
+            background: linear-gradient(135deg, #c4b5fd, #e879f9);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* ── Recent card tags ── */
+        .recent-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            margin-top: 0.6rem;
+        }
+        .recent-tag {
+            background: rgba(52, 211, 153, 0.14);
+            border: 1px solid rgba(52, 211, 153, 0.32);
+            color: #6ee7b7;
+            padding: 0.28rem 0.85rem;
+            border-radius: 999px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+        }
+        .recent-tag-empty {
+            color: rgba(255,255,255,0.3);
+            font-size: 0.82rem;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div class="dashboard-hero">
+        <div class="hero-badge">v3.1 &nbsp;·&nbsp; מערכת ניתוח פוליסות</div>
+        <h1 class="hero-title">השוואת פוליסות 🏠</h1>
+        <p class="hero-subtitle">שלום <strong>{st.session_state.username}</strong> — ניתוח חכם של פוליסות ביטוח בעזרת AI</p>
+    </div>
+
+    <div class="stats-grid">
+        <div class="glass-card card-blue">
+            <span class="card-icon">📋</span>
+            <div class="card-label">פוליסות</div>
+            <div class="card-value">{total_policies}</div>
+        </div>
+
+        <div class="glass-card card-purple">
+            <span class="card-icon">🔍</span>
+            <div class="card-label">החקירות שלי</div>
+            <div class="card-value">{total_inv}</div>
+        </div>
+
+        <div class="glass-card card-teal">
+            <span class="card-icon">⏱️</span>
+            <div class="card-label">חקירות אחרונות</div>
+            <div class="recent-tags">{recent_html}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ============================================================================
