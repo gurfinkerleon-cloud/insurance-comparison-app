@@ -1,0 +1,558 @@
+{
+  "name": "Cliente PDF v2 - Native Supabase",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "initialMessages": "שלום! אני אסיסטנט הביטוח שלך. העלה את קובץ ה-PDF של המפרט שלך ואני אנתח את הכיסויים.",
+        "options": { "allowFileUploads": true }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [-600, 0],
+      "id": "node-001",
+      "name": "When chat message received",
+      "webhookId": "912a281e-68bb-4695-9d00-a27abec4c1cb"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "={{ Object.keys($binary || {}).length > 0 ? Object.keys($binary)[0] : 'data' }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [-380, 0],
+      "id": "node-002",
+      "name": "Extract from File",
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-has-pdf",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-160, 0],
+      "id": "node-003",
+      "name": "IF Has PDF Text"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=מהטקסט הבא של מפרט ביטוח, חלץ JSON בלבד ללא הסברים:\n{\"full_name\": \"שם מלא של המבוטח\", \"codes\": \"8713,6792,5409\"}\n\nחוקים:\n- full_name: שם מלא בדיוק כפי שמופיע\n- codes: מספרי נספחים בני 4-6 ספרות, מופרדים בפסיקים בלבד, ללא רווחים\n- החזר JSON בלבד\n\nטקסט:\n{{ $json.text.substring(0, 4000) }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [60, -200],
+      "id": "node-004",
+      "name": "Extract PDF Data"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-5-20250929",
+          "cachedResultName": "Claude Sonnet 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [60, -40],
+      "id": "node-004b",
+      "name": "Anthropic Extract Model",
+      "credentials": {
+        "anthropicApi": { "id": "0AH2aKB0F6Xrj8LV", "name": "Anthropic account" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.text || $input.first().json.output || '';\nconst clean = raw.replace(/```json|```/g, '').trim();\n\nlet data;\ntry {\n  data = JSON.parse(clean);\n} catch(e) {\n  const m = clean.match(/\\{[\\s\\S]*?\\}/);\n  try { data = m ? JSON.parse(m[0]) : { full_name: 'לא זוהה', codes: '' }; }\n  catch(e2) { data = { full_name: 'לא זוהה', codes: '' }; }\n}\n\nconst phone = $('When chat message received').first().json.sessionId || ('unknown_' + Date.now());\n\nconst codesArray = (data.codes || '')\n  .split(/[,;\\s]+/)\n  .map(s => s.trim())\n  .filter(s => /^\\d{4,6}$/.test(s));\n\nreturn [{\n  json: {\n    phone_number: phone,\n    full_name: data.full_name || 'לא זוהה',\n    codes_array: codesArray,\n    codes_count: codesArray.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, -200],
+      "id": "node-005",
+      "name": "Parse PDF Data"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "profiles",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone_number",
+              "condition": "eq",
+              "keyValue": "={{ $json.phone_number }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [500, -200],
+      "id": "node-006",
+      "name": "Find Profile",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-profile-exists",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [720, -200],
+      "id": "node-007",
+      "name": "IF Profile Exists"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "profiles",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone_number",
+              "condition": "eq",
+              "keyValue": "={{ $('Parse PDF Data').item.json.phone_number }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "full_name", "fieldValue": "={{ $('Parse PDF Data').item.json.full_name }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [940, -320],
+      "id": "node-008a",
+      "name": "Update Profile",
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "profiles",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "phone_number", "fieldValue": "={{ $('Parse PDF Data').item.json.phone_number }}" },
+            { "fieldId": "full_name", "fieldValue": "={{ $('Parse PDF Data').item.json.full_name }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [940, -80],
+      "id": "node-008b",
+      "name": "Create Profile",
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": { "mode": "passThrough", "output": "first" },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1160, -200],
+      "id": "node-009",
+      "name": "Merge Profile"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "profiles",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone_number",
+              "condition": "eq",
+              "keyValue": "={{ $('Parse PDF Data').item.json.phone_number }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1380, -200],
+      "id": "node-010",
+      "name": "Get Profile ID",
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "user_policies",
+        "deleteMatchingBehavior": "deleteAllMatching",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "user_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1600, -200],
+      "id": "node-011",
+      "name": "Delete Old Policies",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const profileId = $('Get Profile ID').first().json.id;\nconst codesArray = $('Parse PDF Data').first().json.codes_array;\n\nif (!codesArray || codesArray.length === 0) {\n  return [{ json: { user_id: profileId, code: '__empty__', skip: true } }];\n}\n\nreturn codesArray.map(code => ({\n  json: { user_id: profileId, code: code, skip: false }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1820, -200],
+      "id": "node-012",
+      "name": "Prepare Code Items"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "master_annexes",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "annex_code",
+              "condition": "eq",
+              "keyValue": "={{ $json.code }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2040, -200],
+      "id": "node-013",
+      "name": "Find Annex",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-annex-found",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            },
+            {
+              "id": "cond-not-skip",
+              "leftValue": "={{ $('Prepare Code Items').item.json.skip }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2260, -200],
+      "id": "node-014",
+      "name": "IF Annex Found"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "user_policies",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "user_id", "fieldValue": "={{ $('Prepare Code Items').item.json.user_id }}" },
+            { "fieldId": "annex_id", "fieldValue": "={{ $json.id }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2480, -320],
+      "id": "node-015",
+      "name": "Create User Policy",
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": { "mode": "passThrough", "output": "first" },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2700, -200],
+      "id": "node-016",
+      "name": "Merge Policies"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "all_results",
+        "include": "noFields"
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [2920, -200],
+      "id": "node-017",
+      "name": "Wait for All Codes"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "set-status", "name": "registration_done", "value": "true", "type": "string" },
+            { "id": "set-name", "name": "client_name", "value": "={{ $('Parse PDF Data').first().json.full_name }}", "type": "string" },
+            { "id": "set-count", "name": "codes_count", "value": "={{ $('Parse PDF Data').first().json.codes_count }}", "type": "number" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [3140, -200],
+      "id": "node-018",
+      "name": "Set Registration Done"
+    },
+    {
+      "parameters": { "mode": "passThrough", "output": "first" },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [3360, 0],
+      "id": "node-019",
+      "name": "Merge to Agent"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('When chat message received').item.json.chatInput }}\n\n---\nSystem Info:\nPhone: {{ $('When chat message received').item.json.sessionId }}",
+        "options": {
+          "systemMessage": "אתה מומחה בכיר לביטוח בריאות בישראל. תפקידך לנהל את הקשר עם הלקוח בצורה חכמה, יעילה ומקצועית.\n\nבדיקה חשובה לפני הכל:\nאם מספר הטלפון שמופיע בפרטי המערכת אינו מספר ישראלי תקין (מתחיל ב-05, 10 ספרות), בקש מהלקוח לספק את מספר הטלפון שלו.\n\nסדר עדיפויות:\n\n1. זיהוי לקוח: השתמש ב-search_database לבדוק אם הטלפון רשום. אם כן - ברך בשמו וציין נספחיו. אם לא - בקש להעלות PDF.\n\n2. מתן מידע: עבור כל שאלה, השתמש ב-search_database להביא full_text רלוונטי. כלול: השתתפות עצמית, זמני המתנה, כלול/לא כלול.\n\n3. נספח חסר בספרייה: הפעל send_admin_notification1 ואמר ללקוח שהמידע יתווסף בקרוב.\n\n4. שפה: עברית רהוטה ומקצועית. סדר מידע בבולטים. אל תמציא נתונים כספיים."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [3580, 0],
+      "id": "node-020",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-5-20250929",
+          "cachedResultName": "Claude Sonnet 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [3460, 180],
+      "id": "node-021",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": { "id": "0AH2aKB0F6Xrj8LV", "name": "Anthropic account" }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [3600, 180],
+      "id": "node-022",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "כלי לשליפת פרטים מלאים, השתתפויות עצמיות וזמני המתנה של נספחים מהספרייה המרכזית.",
+        "operation": "getAll",
+        "tableId": "master_annexes",
+        "returnAll": true,
+        "filterType": "none"
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [3740, 180],
+      "id": "node-023",
+      "name": "search_database",
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "כלי לשליחת מייל למנהל כשחסר נספח במערכת.",
+        "sendTo": "gurfinker.leon@gmail.com",
+        "subject": "חוסר במידע: נספח ביטוח חסר במערכת",
+        "emailType": "text",
+        "message": "={{ $fromAI(\"text\", \"פירוט הנספחים החסרים ושם הלקוח\") }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [3880, 180],
+      "id": "node-024",
+      "name": "send_admin_notification1",
+      "credentials": {
+        "gmailOAuth2": { "id": "xlI6Mm1juj80oWDc", "name": "Gmail account" }
+      }
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [[{ "node": "Extract from File", "type": "main", "index": 0 }]]
+    },
+    "Extract from File": {
+      "main": [
+        [{ "node": "IF Has PDF Text", "type": "main", "index": 0 }],
+        [{ "node": "Merge to Agent", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Has PDF Text": {
+      "main": [
+        [{ "node": "Extract PDF Data", "type": "main", "index": 0 }],
+        [{ "node": "Merge to Agent", "type": "main", "index": 0 }]
+      ]
+    },
+    "Anthropic Extract Model": {
+      "ai_languageModel": [[{ "node": "Extract PDF Data", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Extract PDF Data": {
+      "main": [[{ "node": "Parse PDF Data", "type": "main", "index": 0 }]]
+    },
+    "Parse PDF Data": {
+      "main": [[{ "node": "Find Profile", "type": "main", "index": 0 }]]
+    },
+    "Find Profile": {
+      "main": [[{ "node": "IF Profile Exists", "type": "main", "index": 0 }]]
+    },
+    "IF Profile Exists": {
+      "main": [
+        [{ "node": "Update Profile", "type": "main", "index": 0 }],
+        [{ "node": "Create Profile", "type": "main", "index": 0 }]
+      ]
+    },
+    "Update Profile": {
+      "main": [[{ "node": "Merge Profile", "type": "main", "index": 0 }]]
+    },
+    "Create Profile": {
+      "main": [[{ "node": "Merge Profile", "type": "main", "index": 1 }]]
+    },
+    "Merge Profile": {
+      "main": [[{ "node": "Get Profile ID", "type": "main", "index": 0 }]]
+    },
+    "Get Profile ID": {
+      "main": [[{ "node": "Delete Old Policies", "type": "main", "index": 0 }]]
+    },
+    "Delete Old Policies": {
+      "main": [[{ "node": "Prepare Code Items", "type": "main", "index": 0 }]]
+    },
+    "Prepare Code Items": {
+      "main": [[{ "node": "Find Annex", "type": "main", "index": 0 }]]
+    },
+    "Find Annex": {
+      "main": [[{ "node": "IF Annex Found", "type": "main", "index": 0 }]]
+    },
+    "IF Annex Found": {
+      "main": [
+        [{ "node": "Create User Policy", "type": "main", "index": 0 }],
+        [{ "node": "Merge Policies", "type": "main", "index": 1 }]
+      ]
+    },
+    "Create User Policy": {
+      "main": [[{ "node": "Merge Policies", "type": "main", "index": 0 }]]
+    },
+    "Merge Policies": {
+      "main": [[{ "node": "Wait for All Codes", "type": "main", "index": 0 }]]
+    },
+    "Wait for All Codes": {
+      "main": [[{ "node": "Set Registration Done", "type": "main", "index": 0 }]]
+    },
+    "Set Registration Done": {
+      "main": [[{ "node": "Merge to Agent", "type": "main", "index": 1 }]]
+    },
+    "Merge to Agent": {
+      "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Simple Memory": {
+      "ai_memory": [[{ "node": "AI Agent", "type": "ai_memory", "index": 0 }]]
+    },
+    "search_database": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "send_admin_notification1": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1", "binaryMode": "separate" },
+  "meta": { "templateCredsSetupCompleted": true }
+}
