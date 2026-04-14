@@ -192,7 +192,7 @@
       }
     },
     {
-      "parameters": { "mode": "passThrough", "output": "first" },
+      "parameters": { "mode": "chooseBranch" },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [1160, -200],
@@ -340,7 +340,7 @@
       }
     },
     {
-      "parameters": { "mode": "passThrough", "output": "first" },
+      "parameters": { "mode": "chooseBranch" },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [2700, -200],
@@ -377,7 +377,7 @@
       "name": "Set Registration Done"
     },
     {
-      "parameters": { "mode": "passThrough", "output": "first" },
+      "parameters": { "mode": "chooseBranch" },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [3360, 0],
