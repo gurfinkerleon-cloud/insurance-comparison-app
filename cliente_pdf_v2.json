@@ -377,14 +377,6 @@
       "name": "Set Registration Done"
     },
     {
-      "parameters": { "mode": "chooseBranch" },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [3360, 0],
-      "id": "node-019",
-      "name": "Merge to Agent"
-    },
-    {
       "parameters": {
         "promptType": "define",
         "text": "={{ $('When chat message received').item.json.chatInput }}\n\n---\nSystem Info:\nPhone: {{ $('When chat message received').item.json.sessionId }}",
@@ -470,13 +462,13 @@
     "Extract from File": {
       "main": [
         [{ "node": "IF Has PDF Text", "type": "main", "index": 0 }],
-        [{ "node": "Merge to Agent", "type": "main", "index": 0 }]
+        [{ "node": "AI Agent", "type": "main", "index": 0 }]
       ]
     },
     "IF Has PDF Text": {
       "main": [
         [{ "node": "Extract PDF Data", "type": "main", "index": 0 }],
-        [{ "node": "Merge to Agent", "type": "main", "index": 0 }]
+        [{ "node": "AI Agent", "type": "main", "index": 0 }]
       ]
     },
     "Anthropic Extract Model": {
@@ -534,9 +526,6 @@
       "main": [[{ "node": "Set Registration Done", "type": "main", "index": 0 }]]
     },
     "Set Registration Done": {
-      "main": [[{ "node": "Merge to Agent", "type": "main", "index": 1 }]]
-    },
-    "Merge to Agent": {
       "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
     },
     "Anthropic Chat Model": {
