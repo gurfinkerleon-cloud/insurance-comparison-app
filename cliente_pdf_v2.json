@@ -192,14 +192,6 @@
       }
     },
     {
-      "parameters": { "mode": "chooseBranch" },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [1160, -200],
-      "id": "node-009",
-      "name": "Merge Profile"
-    },
-    {
       "parameters": {
         "operation": "getAll",
         "tableId": "profiles",
@@ -338,14 +330,6 @@
       "credentials": {
         "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
       }
-    },
-    {
-      "parameters": { "mode": "chooseBranch" },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [2700, -200],
-      "id": "node-016",
-      "name": "Merge Policies"
     },
     {
       "parameters": {
@@ -490,12 +474,9 @@
       ]
     },
     "Update Profile": {
-      "main": [[{ "node": "Merge Profile", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Get Profile ID", "type": "main", "index": 0 }]]
     },
     "Create Profile": {
-      "main": [[{ "node": "Merge Profile", "type": "main", "index": 1 }]]
-    },
-    "Merge Profile": {
       "main": [[{ "node": "Get Profile ID", "type": "main", "index": 0 }]]
     },
     "Get Profile ID": {
@@ -513,13 +494,10 @@
     "IF Annex Found": {
       "main": [
         [{ "node": "Create User Policy", "type": "main", "index": 0 }],
-        [{ "node": "Merge Policies", "type": "main", "index": 1 }]
+        [{ "node": "Wait for All Codes", "type": "main", "index": 0 }]
       ]
     },
     "Create User Policy": {
-      "main": [[{ "node": "Merge Policies", "type": "main", "index": 0 }]]
-    },
-    "Merge Policies": {
       "main": [[{ "node": "Wait for All Codes", "type": "main", "index": 0 }]]
     },
     "Wait for All Codes": {
