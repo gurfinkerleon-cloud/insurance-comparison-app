@@ -121,58 +121,6 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 2 },
-          "conditions": [
-            {
-              "id": "cond-profile-exists",
-              "leftValue": "={{ $json.id }}",
-              "rightValue": "",
-              "operator": { "type": "string", "operation": "notEmpty" }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [720, -200],
-      "id": "node-007",
-      "name": "IF Profile Exists"
-    },
-    {
-      "parameters": {
-        "operation": "update",
-        "tableId": "profiles",
-        "filterType": "manual",
-        "matchType": "allFilters",
-        "filters": {
-          "conditions": [
-            {
-              "keyName": "phone_number",
-              "condition": "eq",
-              "keyValue": "={{ $('Parse PDF Data').item.json.phone_number }}"
-            }
-          ]
-        },
-        "fieldsUi": {
-          "fieldValues": [
-            { "fieldId": "full_name", "fieldValue": "={{ $('Parse PDF Data').item.json.full_name }}" }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [940, -320],
-      "id": "node-008a",
-      "name": "Update Profile",
-      "credentials": {
-        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
-      }
-    },
-    {
-      "parameters": {
         "operation": "create",
         "tableId": "profiles",
         "fieldsUi": {
@@ -184,9 +132,11 @@
       },
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
-      "position": [940, -80],
+      "position": [940, -200],
       "id": "node-008b",
       "name": "Create Profile",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
       "credentials": {
         "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
       }
@@ -465,16 +415,7 @@
       "main": [[{ "node": "Find Profile", "type": "main", "index": 0 }]]
     },
     "Find Profile": {
-      "main": [[{ "node": "IF Profile Exists", "type": "main", "index": 0 }]]
-    },
-    "IF Profile Exists": {
-      "main": [
-        [{ "node": "Update Profile", "type": "main", "index": 0 }],
-        [{ "node": "Create Profile", "type": "main", "index": 0 }]
-      ]
-    },
-    "Update Profile": {
-      "main": [[{ "node": "Get Profile ID", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Create Profile", "type": "main", "index": 0 }]]
     },
     "Create Profile": {
       "main": [[{ "node": "Get Profile ID", "type": "main", "index": 0 }]]
