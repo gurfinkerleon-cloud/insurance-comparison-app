@@ -53,7 +53,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=מהטקסט הבא של מפרט ביטוח, חלץ JSON בלבד ללא הסברים:\n{\"full_name\": \"שם מלא של המבוטח\", \"codes\": \"8713,6792,5409\"}\n\nחוקים:\n- full_name: שם מלא בדיוק כפי שמופיע\n- codes: מספרי נספחים בני 4-6 ספרות, מופרדים בפסיקים בלבד, ללא רווחים\n- החזר JSON בלבד\n\nטקסט:\n{{ $json.text.substring(0, 4000) }}",
+        "text": "=מהטקסט הבא של מפרט ביטוח, חלץ JSON בלבד ללא הסברים:\n{\"full_name\": \"שם מלא של המבוטח\", \"phone\": \"0521234567\", \"codes\": \"8713,6792,5409\"}\n\nחוקים:\n- full_name: שם מלא בדיוק כפי שמופיע\n- phone: מספר טלפון ישראלי 10 ספרות המתחיל ב-05, אם לא מופיע בטקסט - השאר ריק \"\"\n- codes: מספרי נספחים בני 4-6 ספרות, מופרדים בפסיקים בלבד, ללא רווחים\n- החזר JSON בלבד\n\nטקסט:\n{{ $json.text.substring(0, 4000) }}",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
@@ -83,7 +83,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json.text || $input.first().json.output || '';\nconst clean = raw.replace(/```json|```/g, '').trim();\n\nlet data;\ntry {\n  data = JSON.parse(clean);\n} catch(e) {\n  const m = clean.match(/\\{[\\s\\S]*?\\}/);\n  try { data = m ? JSON.parse(m[0]) : { full_name: 'לא זוהה', codes: '' }; }\n  catch(e2) { data = { full_name: 'לא זוהה', codes: '' }; }\n}\n\nconst phone = $('When chat message received').first().json.sessionId || ('unknown_' + Date.now());\n\nconst codesArray = (data.codes || '')\n  .split(/[,;\\s]+/)\n  .map(s => s.trim())\n  .filter(s => /^\\d{4,6}$/.test(s));\n\nreturn [{\n  json: {\n    phone_number: phone,\n    full_name: data.full_name || 'לא זוהה',\n    codes_array: codesArray,\n    codes_count: codesArray.length\n  }\n}];"
+        "jsCode": "const raw = $input.first().json.text || $input.first().json.output || '';\nconst clean = raw.replace(/```json|```/g, '').trim();\n\nlet data;\ntry {\n  data = JSON.parse(clean);\n} catch(e) {\n  const m = clean.match(/\\{[\\s\\S]*?\\}/);\n  try { data = m ? JSON.parse(m[0]) : { full_name: 'לא זוהה', codes: '', phone: '' }; }\n  catch(e2) { data = { full_name: 'לא זוהה', codes: '', phone: '' }; }\n}\n\nconst chatInput = $('When chat message received').first().json.chatInput || '';\nconst sessionId = $('When chat message received').first().json.sessionId || ('unknown_' + Date.now());\n\n// Extract valid Israeli phone (05XXXXXXXX) from chatInput first, then PDF\nconst israeliPhone = /05\\d{8}/;\nconst normalize = s => (s || '').replace(/[-\\s]/g, '');\nconst fromChat = normalize(chatInput).match(israeliPhone);\nconst fromPdf = normalize(data.phone || '').match(israeliPhone);\nconst phone = (fromChat && fromChat[0]) || (fromPdf && fromPdf[0]) || sessionId;\n\nconst codesArray = (data.codes || '')\n  .split(/[,;\\s]+/)\n  .map(s => s.trim())\n  .filter(s => /^\\d{4,6}$/.test(s));\n\nreturn [{\n  json: {\n    phone_number: phone,\n    phone_is_valid: /^05\\d{8}$/.test(phone),\n    full_name: data.full_name || 'לא זוהה',\n    codes_array: codesArray,\n    codes_count: codesArray.length\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -381,7 +381,7 @@
         "promptType": "define",
         "text": "={{ $('When chat message received').item.json.chatInput }}\n\n---\nSystem Info:\nPhone: {{ $('When chat message received').item.json.sessionId }}",
         "options": {
-          "systemMessage": "אתה מומחה בכיר לביטוח בריאות בישראל. תפקידך לנהל את הקשר עם הלקוח בצורה חכמה, יעילה ומקצועית.\n\nבדיקה חשובה לפני הכל:\nאם מספר הטלפון שמופיע בפרטי המערכת אינו מספר ישראלי תקין (מתחיל ב-05, 10 ספרות), בקש מהלקוח לספק את מספר הטלפון שלו.\n\nסדר עדיפויות:\n\n1. זיהוי לקוח: השתמש ב-search_database לבדוק אם הטלפון רשום. אם כן - ברך בשמו וציין נספחיו. אם לא - בקש להעלות PDF.\n\n2. מתן מידע: עבור כל שאלה, השתמש ב-search_database להביא full_text רלוונטי. כלול: השתתפות עצמית, זמני המתנה, כלול/לא כלול.\n\n3. נספח חסר בספרייה: הפעל send_admin_notification1 ואמר ללקוח שהמידע יתווסף בקרוב.\n\n4. שפה: עברית רהוטה ומקצועית. סדר מידע בבולטים. אל תמציא נתונים כספיים."
+          "systemMessage": "אתה מומחה בכיר לביטוח בריאות בישראל. תפקידך לנהל את הקשר עם הלקוח בצורה חכמה, יעילה ומקצועית.\n\nכלל עליון: אל תחזיר לעולם נתוני JSON גולמיים. תמיד השב בעברית טבעית ומובנת.\n\nבדיקת טלפון:\nאם המספר בפרטי המערכת אינו ישראלי תקין (10 ספרות המתחיל ב-05), בקש מהלקוח: \"כדי לשמור את פרטיך במערכת, אשמח לקבל את מספר הטלפון שלך (05XXXXXXXX)\".\n\nאחרי העלאת PDF:\nאם קיבלת הקשר עם registration_done או codes_count, פרט ללקוח:\n- שם שזוהה\n- כמה נספחים נמצאו בקובץ\n- אם הנספחים לא היו בספרייה - הפעל send_admin_notification1 ואמר: \"הנספחים שלך יתווספו לספרייה בקרוב ואעדכן אותך\"\n\nסדר עדיפויות:\n1. זיהוי לקוח: השתמש ב-search_database לבדוק נספחים. אם לקוח רשום - ברך בשמו. אם לא - בקש PDF.\n2. מתן מידע: לכל שאלה, השתמש ב-search_database. כלול: השתתפות עצמית, זמני המתנה, כלול/לא כלול.\n3. נספח חסר: הפעל send_admin_notification1 ואמר שיתווסף בקרוב.\n\nשפה: עברית רהוטה ומקצועית. סדר מידע בבולטים. אל תמציא נתונים כספיים."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
