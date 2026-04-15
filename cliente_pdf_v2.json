@@ -460,7 +460,10 @@
       "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
     }
   },
-  "active": true,
+  "active": false,
+  "pinData": {},
+  "versionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "settings": { "executionOrder": "v1", "binaryMode": "separate" },
+  "tags": [],
   "meta": { "templateCredsSetupCompleted": true }
 }
