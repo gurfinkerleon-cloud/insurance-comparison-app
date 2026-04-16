@@ -131,12 +131,13 @@
     },
     {
       "parameters": {
-        "operation": "create",
+        "operation": "upsert",
         "tableId": "profiles",
+        "conflictColumns": "phone_number",
         "fieldsUi": {
           "fieldValues": [
-            { "fieldId": "phone_number", "fieldValue": "={{ $('Parse PDF Data').item.json.phone_number }}" },
-            { "fieldId": "full_name", "fieldValue": "={{ $('Parse PDF Data').item.json.full_name }}" }
+            { "fieldId": "phone_number", "fieldValue": "={{ $('Parse PDF Data').first().json.phone_number }}" },
+            { "fieldId": "full_name", "fieldValue": "={{ $('Parse PDF Data').first().json.full_name }}" }
           ]
         }
       },
@@ -164,7 +165,7 @@
             {
               "keyName": "phone_number",
               "condition": "eq",
-              "keyValue": "={{ $('Parse PDF Data').item.json.phone_number }}"
+              "keyValue": "={{ $('Parse PDF Data').first().json.phone_number }}"
             }
           ]
         }
