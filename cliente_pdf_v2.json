@@ -16,11 +16,11 @@
     },
     {
       "parameters": {
-        "jsCode": "const hasPdf = Object.keys($binary || {}).length > 0;\nconst binaryKey = hasPdf ? Object.keys($binary)[0] : null;\nreturn [{ json: { ...$json, has_pdf: hasPdf, binary_key: binaryKey } }];"
+        "jsCode": "const hasPdf = Object.keys($binary || {}).length > 0;\nconst binaryKey = hasPdf ? Object.keys($binary)[0] : null;\nreturn [{\n  json: { ...$json, has_pdf: hasPdf, binary_key: binaryKey },\n  binary: $binary || {}\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-480, 0],
+      "position": [-440, 0],
       "id": "node-002a",
       "name": "Check File"
     },
@@ -32,7 +32,7 @@
       },
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1.1,
-      "position": [-280, 0],
+      "position": [-60, -200],
       "id": "node-002",
       "name": "Extract from File",
       "alwaysOutputData": true,
@@ -56,7 +56,7 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [-160, 0],
+      "position": [-220, 0],
       "id": "node-003",
       "name": "IF Has PDF Text"
     },
@@ -404,16 +404,16 @@
       "main": [[{ "node": "Check File", "type": "main", "index": 0 }]]
     },
     "Check File": {
-      "main": [[{ "node": "Extract from File", "type": "main", "index": 0 }]]
-    },
-    "Extract from File": {
       "main": [[{ "node": "IF Has PDF Text", "type": "main", "index": 0 }]]
     },
     "IF Has PDF Text": {
       "main": [
-        [{ "node": "Extract PDF Data", "type": "main", "index": 0 }],
+        [{ "node": "Extract from File", "type": "main", "index": 0 }],
         [{ "node": "AI Agent", "type": "main", "index": 0 }]
       ]
+    },
+    "Extract from File": {
+      "main": [[{ "node": "Extract PDF Data", "type": "main", "index": 0 }]]
     },
     "Anthropic Extract Model": {
       "ai_languageModel": [[{ "node": "Extract PDF Data", "type": "ai_languageModel", "index": 0 }]]
