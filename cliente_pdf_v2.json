@@ -16,17 +16,27 @@
     },
     {
       "parameters": {
+        "jsCode": "const hasPdf = Object.keys($binary || {}).length > 0;\nconst binaryKey = hasPdf ? Object.keys($binary)[0] : null;\nreturn [{ json: { ...$json, has_pdf: hasPdf, binary_key: binaryKey } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-480, 0],
+      "id": "node-002a",
+      "name": "Check File"
+    },
+    {
+      "parameters": {
         "operation": "pdf",
-        "binaryPropertyName": "={{ Object.keys($binary || {}).length > 0 ? Object.keys($binary)[0] : 'data' }}",
+        "binaryPropertyName": "={{ $json.binary_key || 'data' }}",
         "options": {}
       },
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1.1,
-      "position": [-380, 0],
+      "position": [-280, 0],
       "id": "node-002",
       "name": "Extract from File",
       "alwaysOutputData": true,
-      "onError": "continueErrorOutput"
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -35,9 +45,9 @@
           "conditions": [
             {
               "id": "cond-has-pdf",
-              "leftValue": "={{ $json.text }}",
-              "rightValue": "",
-              "operator": { "type": "string", "operation": "notEmpty" }
+              "leftValue": "={{ $json.has_pdf }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
             }
           ],
           "combinator": "and"
@@ -53,7 +63,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=מהטקסט הבא של מפרט ביטוח, חלץ JSON בלבד ללא הסברים:\n{\"full_name\": \"שם מלא של המבוטח\", \"phone\": \"0521234567\", \"codes\": \"8713,6792,5409\"}\n\nחוקים:\n- full_name: שם מלא בדיוק כפי שמופיע\n- phone: מספר טלפון ישראלי 10 ספרות המתחיל ב-05, אם לא מופיע בטקסט - השאר ריק \"\"\n- codes: מספרי נספחים בני 4-6 ספרות, מופרדים בפסיקים בלבד, ללא רווחים\n- החזר JSON בלבד\n\nטקסט:\n{{ $json.text.substring(0, 4000) }}",
+        "text": "=מהטקסט הבא של מפרט ביטוח, חלץ JSON בלבד ללא הסברים:\n{\"full_name\": \"שם מלא של המבוטח\", \"phone\": \"0521234567\", \"codes\": \"8713,6792,5409\"}\n\nחוקים:\n- full_name: שם מלא בדיוק כפי שמופיע\n- phone: מספר טלפון ישראלי 10 ספרות המתחיל ב-05, אם לא מופיע בטקסט - השאר ריק \"\"\n- codes: מספרי נספחים בני 4-6 ספרות, מופרדים בפסיקים בלבד, ללא רווחים\n- החזר JSON בלבד\n\nטקסט:\n{{ ($json.text || '').substring(0, 4000) }}",
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
@@ -391,13 +401,13 @@
   ],
   "connections": {
     "When chat message received": {
+      "main": [[{ "node": "Check File", "type": "main", "index": 0 }]]
+    },
+    "Check File": {
       "main": [[{ "node": "Extract from File", "type": "main", "index": 0 }]]
     },
     "Extract from File": {
-      "main": [
-        [{ "node": "IF Has PDF Text", "type": "main", "index": 0 }],
-        [{ "node": "AI Agent", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "IF Has PDF Text", "type": "main", "index": 0 }]]
     },
     "IF Has PDF Text": {
       "main": [
