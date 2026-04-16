@@ -131,9 +131,8 @@
     },
     {
       "parameters": {
-        "operation": "upsert",
+        "operation": "create",
         "tableId": "profiles",
-        "conflictColumns": "phone_number",
         "fieldsUi": {
           "fieldValues": [
             { "fieldId": "phone_number", "fieldValue": "={{ $('Parse PDF Data').first().json.phone_number }}" },
