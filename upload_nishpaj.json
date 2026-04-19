@@ -1,0 +1,203 @@
+{
+  "name": "Upload nishpaj",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "={{ Object.keys($binary)[0] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [224, 0],
+      "id": "de417199-ae79-419a-b233-10883f26cf7d",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }}",
+        "options": {
+          "systemMessage": "\"אתה מומחה לביטוח בריאות בישראל.\n אני מעביר לך טקסט שחולץ מקובץ PDF של נספח ביטוחי (תקנון).\nהמשימה שלך היא לנתח את הטקסט ולהוציא ממנו את הפרטים הבאים בפורמט JSON בלבד:\ncompany_name: שם חברת הביטוח (למשל: הפניקס).\nannex_code: קוד הנספח (למשל: 6792).\nannex_name: שם הנספח (למשל: רפואה משלימה).\nfull_text: סיכום מפורט, מקצועי ומובנה של כל תנאי הפוליסה בעברית. הסיכום חייב לכלול: רשימת כיסויים, גובה השתתפות עצמית, זמני המתנה, וחריגים (מה לא מכוסה).\nחשוב: תחזיר אך ורק את אובייקט ה-JSON, ללא הסברים נוספים\n\"תחלץ את שם החברה כפי שהוא מופיע ברשימה הבאה בלבד: הפניקס, הראל, מגדל, כלל, מנורה. אל תוסיף 'חברה לביטוח' או 'בע\"מ\""
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [448, 0],
+      "id": "5d57cd30-3595-447d-bdba-b2b2f70426fb",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "tableId": "master_annexes",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "company_id",
+              "fieldValue": "={{ $json.id }}"
+            },
+            {
+              "fieldId": "annex_code",
+              "fieldValue": "={{ $('Clean').item.json.annex_code }}"
+            },
+            {
+              "fieldId": "annex_name",
+              "fieldValue": "={{ $('Clean').item.json.annex_name }}"
+            },
+            {
+              "fieldId": "full_text",
+              "fieldValue": "={{ $('Clean').item.json.full_text }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1440, 0],
+      "id": "4167c4c7-0c70-40e8-90a9-e63197ef2843",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "העלאת נספח ביטוח",
+        "formDescription": "תצרף את הקובץ של הנספח למערכת",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "תצרף קובץ נספח",
+              "fieldType": "file"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [0, 0],
+      "id": "3309a73e-b9e5-4196-8a91-01ba95fa88b1",
+      "name": "On form submission",
+      "webhookId": "8d027868-783f-4213-9b91-62e16fda274e"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-5-20250929",
+          "cachedResultName": "Claude Sonnet 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [528, 224],
+      "id": "374d7378-1bf5-481e-a65b-3c9c8ce993ff",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "0AH2aKB0F6Xrj8LV",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawOutput = $node[\"AI Agent\"].json[\"output\"];\n// Limpiamos las etiquetas de markdown si existen\nconst cleanJson = rawOutput.replace(/```json|```/g, \"\").trim();\nreturn JSON.parse(cleanJson);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 0],
+      "id": "62f96086-35d2-4cca-a387-eb6ddfb24424",
+      "name": "Clean"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "insurance_companies"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1008, 0],
+      "id": "1941bf6b-7751-4dc4-8e2f-76563678542c",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3f82bb23-3307-4387-bbab-2c8fd5309549",
+              "leftValue": "={{ $('Clean').item.json.company_name }}",
+              "rightValue": "={{ $json.name }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [1216, 0],
+      "id": "e9019201-3a96-419d-9d9a-96777c96221b",
+      "name": "Filter"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Extract from File": {
+      "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
+    },
+    "AI Agent": {
+      "main": [[{ "node": "Clean", "type": "main", "index": 0 }]]
+    },
+    "On form submission": {
+      "main": [[{ "node": "Extract from File", "type": "main", "index": 0 }]]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Clean": {
+      "main": [[{ "node": "Get many rows", "type": "main", "index": 0 }]]
+    },
+    "Get many rows": {
+      "main": [[{ "node": "Filter", "type": "main", "index": 0 }]]
+    },
+    "Filter": {
+      "main": [[{ "node": "Create a row", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "386ab452-ec57-4b38-9fa7-2137f03ffc6d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4d0309d01da561bcc6fc32fba680d092dc044dc2b1bbcbe80e143d723a907ba8"
+  },
+  "id": "bbN5xO8HI2Io3NCl",
+  "tags": []
+}
