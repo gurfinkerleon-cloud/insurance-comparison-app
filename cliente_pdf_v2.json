@@ -103,46 +103,18 @@
     },
     {
       "parameters": {
-        "operation": "getAll",
+        "operation": "create",
         "tableId": "profiles",
-        "returnAll": false,
-        "limit": 1,
-        "filterType": "manual",
-        "matchType": "allFilters",
-        "filters": {
-          "conditions": [
-            {
-              "keyName": "phone_number",
-              "condition": "eq",
-              "keyValue": "={{ $json.phone_number }}"
-            }
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "phone_number", "fieldValue": "={{ $json.phone_number }}" },
+            { "fieldId": "full_name", "fieldValue": "={{ $json.full_name }}" }
           ]
         }
       },
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [500, -200],
-      "id": "node-006",
-      "name": "Find Profile",
-      "alwaysOutputData": true,
-      "credentials": {
-        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "create",
-        "tableId": "profiles",
-        "fieldsUi": {
-          "fieldValues": [
-            { "fieldId": "phone_number", "fieldValue": "={{ $('Parse PDF Data').first().json.phone_number }}" },
-            { "fieldId": "full_name", "fieldValue": "={{ $('Parse PDF Data').first().json.full_name }}" }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [940, -200],
       "id": "node-008b",
       "name": "Create Profile",
       "alwaysOutputData": true,
@@ -422,9 +394,6 @@
       "main": [[{ "node": "Parse PDF Data", "type": "main", "index": 0 }]]
     },
     "Parse PDF Data": {
-      "main": [[{ "node": "Find Profile", "type": "main", "index": 0 }]]
-    },
-    "Find Profile": {
       "main": [[{ "node": "Create Profile", "type": "main", "index": 0 }]]
     },
     "Create Profile": {
