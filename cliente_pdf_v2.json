@@ -117,8 +117,6 @@
       "position": [500, -200],
       "id": "node-008b",
       "name": "Create Profile",
-      "alwaysOutputData": true,
-      "onError": "continueRegularOutput",
       "credentials": {
         "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
       }
