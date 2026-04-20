@@ -103,6 +103,28 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-valid-phone",
+              "leftValue": "={{ $json.phone_is_valid }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [390, -200],
+      "id": "node-005b",
+      "name": "IF Valid Phone"
+    },
+    {
+      "parameters": {
         "operation": "create",
         "tableId": "profiles",
         "fieldsUi": {
@@ -394,7 +416,13 @@
       "main": [[{ "node": "Parse PDF Data", "type": "main", "index": 0 }]]
     },
     "Parse PDF Data": {
-      "main": [[{ "node": "Create Profile", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "IF Valid Phone", "type": "main", "index": 0 }]]
+    },
+    "IF Valid Phone": {
+      "main": [
+        [{ "node": "Create Profile", "type": "main", "index": 0 }],
+        [{ "node": "AI Agent", "type": "main", "index": 0 }]
+      ]
     },
     "Create Profile": {
       "main": [[{ "node": "Get Profile ID", "type": "main", "index": 0 }]]
