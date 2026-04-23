@@ -16,7 +16,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const chatInput = $json.chatInput || '';\nconst sessionId = $json.sessionId || '';\n\nconst israeliPhone = /05\\d{8}/;\nconst normalize = s => (s || '').replace(/[-\\s]/g, '');\nconst fromChat = normalize(chatInput).match(israeliPhone);\nconst phone = fromChat ? fromChat[0] : null;\nconst phoneIsValid = phone !== null;\n\nconst hasPdf = Object.keys($binary || {}).length > 0;\nconst binaryKey = hasPdf ? Object.keys($binary)[0] : null;\n\nreturn [{\n  json: {\n    ...$json,\n    phone_number: phone || sessionId,\n    phone_is_valid: phoneIsValid,\n    has_pdf: hasPdf,\n    binary_key: binaryKey\n  },\n  binary: $binary || {}\n}];"
+        "jsCode": "const chatInput = $json.chatInput || '';\nconst sessionId = $json.sessionId || '';\n\nconst israeliPhone = /05\\d{8}/;\nconst normalize = s => (s || '').replace(/[-\\s]/g, '');\nconst fromChat = normalize(chatInput).match(israeliPhone);\nconst phone = fromChat ? fromChat[0] : null;\n\n// Persist phone number across conversation turns\nconst staticData = $getWorkflowStaticData('global');\nif (phone && sessionId) {\n  staticData[sessionId] = phone;\n}\nconst savedPhone = sessionId ? (staticData[sessionId] || null) : null;\nconst resolvedPhone = phone || savedPhone;\nconst phoneIsValid = resolvedPhone !== null && /^05\\d{8}$/.test(resolvedPhone);\n\nconst hasPdf = Object.keys($binary || {}).length > 0;\nconst binaryKey = hasPdf ? Object.keys($binary)[0] : null;\n\nreturn [{\n  json: {\n    ...$json,\n    phone_number: resolvedPhone || sessionId,\n    phone_is_valid: phoneIsValid,\n    has_pdf: hasPdf,\n    binary_key: binaryKey\n  },\n  binary: $binary || {}\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -123,7 +123,8 @@
         "assignments": {
           "assignments": [
             { "id": "set-status", "name": "user_status", "value": "existing", "type": "string" },
-            { "id": "set-name", "name": "client_name", "value": "={{ $json.full_name }}", "type": "string" }
+            { "id": "set-name", "name": "client_name", "value": "={{ $json.full_name }}", "type": "string" },
+            { "id": "set-uid", "name": "user_id", "value": "={{ $json.id }}", "type": "string" }
           ]
         },
         "options": {}
@@ -398,9 +399,9 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "={{ $('When chat message received').first().json.chatInput }}\n\n---\nSystem Info:\nPhone: {{ $('Extract Phone').first().json.phone_number }}\nPhone Digits: {{ ($('Extract Phone').first().json.phone_number || '').replace(/[^0-9]/g,'').length }}\nHas PDF: {{ $('Extract Phone').first().json.has_pdf ? 'YES' : 'NO' }}\nUser Status: {{ $json.user_status || 'UNKNOWN' }}\n{{ $json.client_name ? 'Client Name: ' + $json.client_name : '' }}\n{{ $json.user_annexes ? 'Registered Annexes: ' + $json.user_annexes : '' }}\n{{ $json.codes_count !== undefined ? 'Codes Found: ' + $json.codes_count : '' }}",
+        "text": "={{ $('When chat message received').first().json.chatInput }}\n\n---\nSystem Info:\nPhone: {{ $('Extract Phone').first().json.phone_number }}\nPhone Digits: {{ ($('Extract Phone').first().json.phone_number || '').replace(/[^0-9]/g,'').length }}\nHas PDF: {{ $('Extract Phone').first().json.has_pdf ? 'YES' : 'NO' }}\nUser Status: {{ $json.user_status || 'UNKNOWN' }}\n{{ $json.client_name ? 'Client Name: ' + $json.client_name : '' }}\n{{ $json.user_id ? 'User ID: ' + $json.user_id : '' }}\n{{ $json.user_annexes ? 'Registered Annexes: ' + $json.user_annexes : '' }}\n{{ $json.codes_count !== undefined ? 'Codes Found: ' + $json.codes_count : '' }}",
         "options": {
-          "systemMessage": "אתה מומחה בכיר לביטוח בריאות בישראל.\n\nכלל עליון: אל תחזיר לעולם נתוני JSON גולמיים. תמיד השב בעברית טבעית.\nכלל חשוב: לעולם אל תשנה, אל תנחש ואל תמציא מספרי טלפון. הצג בדיוק את מה שכתוב ב-Phone.\n\nקרא תמיד את System Info לפני כל תגובה:\n\nUser Status = existing:\n✅ ברך את הלקוח בשמו (Client Name)\n- שאל במה תוכל לעזור\n- השתמש ב-search_database לענות על שאלות כיסוי ביטוחי לפי הנספחים ב-Registered Annexes\n- ענה רק על נספחים שמופיעים ב-Registered Annexes\n\nUser Status = NEW_REGISTERED:\n✅ הרישום הושלם! השב כך:\n- ברך את הלקוח בשמו (Client Name)\n- ציין כמה נספחים נמצאו ונשמרו (Codes Found)\n- אם Codes Found = 0: הפעל send_admin_notification1 ואמר שהנספחים יתווספו בקרוב\n- שאל במה תוכל לעזור\n\nUser Status = no_profile (לקוח חדש, ללא PDF):\n- אמר: 'לא מצאתי אותך במערכת. שלח/י הודעה עם הטלפון + PDF הפוליסה מצורף (סמל הקלפיס)'\n\nUser Status = UNKNOWN (טלפון לא תקין):\n- בדוק את Phone Digits: אם לא 10 ספרות - אמר בדיוק: 'המספר שקיבלתי [Phone] הוא [Phone Digits] ספרות. אני צריך מספר של 10 ספרות המתחיל ב-05 (לדוגמה: 0541234567)'\n- אם Has PDF = YES: אמר 'ראיתי שצירפת PDF - שלח/י שוב עם הטלפון המתוקן ואני אסרוק אותו'\n- אם Has PDF = NO: בקש טלפון + PDF ביחד\n\nסדר עדיפויות לשאלות:\n1. השתמש ב-search_database לשלוף מידע על נספחים\n2. כלול: השתתפות עצמית, זמני המתנה, כלול/לא כלול\n3. נספח חסר? הפעל send_admin_notification1\n\nשפה: עברית רהוטה. בולטים. אל תמציא נתונים כספיים."
+          "systemMessage": "אתה מומחה בכיר לביטוח בריאות בישראל.\n\nכלל עליון: אל תחזיר לעולם נתוני JSON גולמיים. תמיד השב בעברית טבעית.\nכלל חשוב: לעולם אל תשנה, אל תנחש ואל תמציא מספרי טלפון. הצג בדיוק את מה שכתוב ב-Phone.\n\nקרא תמיד את System Info לפני כל תגובה:\n\nUser Status = existing:\n✅ ברך את הלקוח בשמו (Client Name) בפעם הראשונה בלבד.\n\nכשהלקוח שואל שאלה על כיסוי ביטוחי, בצע בסדר הזה:\n1. קרא get_user_policies — תקבל רשימה של { user_id, annex_id }. סנן רק את השורות שבהן user_id = [User ID מה-System Info].\n2. לכל annex_id שמצאת: קרא search_database ומצא את הנספח שבו id = annex_id.\n3. ציטוט חובה: העתק את כל תוכן ה-full_text של הנספח הרלוונטי כמו שהוא — כולל שמות ספקים, מספרי טלפון, מחירים, השתתפות עצמית וכל פרט אחר. אל תסכם ואל תקצר.\n4. אם אף נספח לא מכסה את הבקשה — הפעל send_admin_notification1.\n\nUser Status = NEW_REGISTERED:\n✅ הרישום הושלם! השב כך:\n- ברך את הלקוח בשמו (Client Name)\n- ציין כמה נספחים נמצאו ונשמרו (Codes Found)\n- אם Codes Found = 0: הפעל send_admin_notification1 ואמר שהנספחים יתווספו בקרוב\n- שאל במה תוכל לעזור\n\nUser Status = no_profile (לקוח חדש, ללא PDF):\n- אמר: 'לא מצאתי אותך במערכת. שלח/י הודעה עם הטלפון + PDF הפוליסה מצורף (סמל הקלפיס)'\n\nUser Status = UNKNOWN (טלפון לא תקין):\n- בדוק את Phone Digits: אם לא 10 ספרות - אמר בדיוק: 'המספר שקיבלתי [Phone] הוא [Phone Digits] ספרות. אני צריך מספר של 10 ספרות המתחיל ב-05 (לדוגמה: 0541234567)'\n- אם Has PDF = YES: אמר 'ראיתי שצירפת PDF - שלח/י שוב עם הטלפון המתוקן ואני אסרוק אותו'\n- אם Has PDF = NO: בקש טלפון + PDF ביחד\n\nשפה: עברית רהוטה. בולטים. אל תמציא נתונים כספיים."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -471,6 +472,24 @@
       "name": "send_admin_notification1",
       "credentials": {
         "gmailOAuth2": { "id": "xlI6Mm1juj80oWDc", "name": "Gmail account" }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "כלי לשליפת רשימת הנספחים של לקוח. מחזיר שורות עם user_id ו-annex_id. סנן לפי user_id של הלקוח הנוכחי מ-System Info.",
+        "operation": "getAll",
+        "tableId": "user_policies",
+        "returnAll": true,
+        "filterType": "none"
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [3100, 400],
+      "id": "node-025",
+      "name": "get_user_policies",
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
       }
     }
   ],
@@ -560,6 +579,9 @@
       "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
     },
     "send_admin_notification1": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "get_user_policies": {
       "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
     }
   },
