@@ -18,7 +18,7 @@
         "promptType": "define",
         "text": "={{ $json.text }}",
         "options": {
-          "systemMessage": "\"אתה מומחה לביטוח בריאות בישראל.\n אני מעביר לך טקסט שחולץ מקובץ PDF של נספח ביטוחי (תקנון).\nהמשימה שלך היא לנתח את הטקסט ולהוציא ממנו את הפרטים הבאים בפורמט JSON בלבד:\ncompany_name: שם חברת הביטוח (למשל: הפניקס).\nannex_code: קוד הנספח (למשל: 6792).\nannex_name: שם הנספח (למשל: רפואה משלימה).\nfull_text: סיכום מפורט, מקצועי ומובנה של כל תנאי הפוליסה בעברית. הסיכום חייב לכלול: רשימת כיסויים, גובה השתתפות עצמית, זמני המתנה, וחריגים (מה לא מכוסה).\nחשוב: תחזיר אך ורק את אובייקט ה-JSON, ללא הסברים נוספים\n\"תחלץ את שם החברה כפי שהוא מופיע ברשימה הבאה בלבד: הפניקס, הראל, מגדל, כלל, מנורה. אל תוסיף 'חברה לביטוח' או 'בע\"מ\""
+          "systemMessage": "אתה מומחה לביטוח בריאות בישראל.\nאני מעביר לך טקסט שחולץ מקובץ PDF של נספח ביטוחי.\nהמשימה שלך היא לנתח את הטקסט ולהוציא ממנו את הפרטים הבאים בפורמט JSON בלבד:\ncompany_name: שם חברת הביטוח.\nannex_code: קוד הנספח (למשל: 6792).\nannex_name: שם הנספח (למשל: רפואה משלימה).\nfull_text: טקסט מלא ומפורט של כל תנאי הנספח בעברית. חובה לכלול ללא קיצורים: שמות כל ספקי השירות, כתובות מדויקות, מספרי טלפון (כולל מספר מוקד השירות), שעות פעילות, גובה כל ההשתתפויות העצמיות לכל סוג שירות, זמני המתנה, רשימת כיסויים מלאה, וחריגים. אל תסכם ואל תקצר - שמור על כל הפרטים כפי שמופיעים בטקסט המקורי.\nחשוב: תחזיר אך ורק את אובייקט ה-JSON, ללא הסברים נוספים.\nתחלץ את שם החברה כפי שהוא מופיע ברשימה הבאה בלבד: הפניקס, הראל, מגדל, כלל, מנורה. אל תוסיף 'חברה לביטוח' או 'בע\"מ'"
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -26,42 +26,6 @@
       "position": [448, 0],
       "id": "5d57cd30-3595-447d-bdba-b2b2f70426fb",
       "name": "AI Agent"
-    },
-    {
-      "parameters": {
-        "tableId": "master_annexes",
-        "fieldsUi": {
-          "fieldValues": [
-            {
-              "fieldId": "company_id",
-              "fieldValue": "={{ $json.id }}"
-            },
-            {
-              "fieldId": "annex_code",
-              "fieldValue": "={{ $('Clean').item.json.annex_code }}"
-            },
-            {
-              "fieldId": "annex_name",
-              "fieldValue": "={{ $('Clean').item.json.annex_name }}"
-            },
-            {
-              "fieldId": "full_text",
-              "fieldValue": "={{ $('Clean').item.json.full_text }}"
-            }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [1440, 0],
-      "id": "4167c4c7-0c70-40e8-90a9-e63197ef2843",
-      "name": "Create a row",
-      "credentials": {
-        "supabaseApi": {
-          "id": "NJPl0jtQQasqPtql",
-          "name": "Supabase account"
-        }
-      }
     },
     {
       "parameters": {
@@ -108,7 +72,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const rawOutput = $node[\"AI Agent\"].json[\"output\"];\n// Limpiamos las etiquetas de markdown si existen\nconst cleanJson = rawOutput.replace(/```json|```/g, \"\").trim();\nreturn JSON.parse(cleanJson);"
+        "jsCode": "const rawOutput = $node[\"AI Agent\"].json[\"output\"];\nconst cleanJson = rawOutput.replace(/```json|```/g, \"\").trim();\nreturn JSON.parse(cleanJson);"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -162,6 +126,141 @@
       "position": [1216, 0],
       "id": "e9019201-3a96-419d-9d9a-96777c96221b",
       "name": "Filter"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "master_annexes",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "annex_code",
+              "condition": "eq",
+              "keyValue": "={{ $('Clean').first().json.annex_code }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1440, 0],
+      "id": "node-check-annex",
+      "name": "Check Annex Exists",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-annex-exists",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1660, 0],
+      "id": "node-if-annex",
+      "name": "IF Annex Exists"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "master_annexes",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "annex_name",
+              "fieldValue": "={{ $('Clean').first().json.annex_name }}"
+            },
+            {
+              "fieldId": "full_text",
+              "fieldValue": "={{ $('Clean').first().json.full_text }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1880, -160],
+      "id": "node-update-annex",
+      "name": "Update Annex",
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "master_annexes",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "company_id",
+              "fieldValue": "={{ $('Filter').first().json.id }}"
+            },
+            {
+              "fieldId": "annex_code",
+              "fieldValue": "={{ $('Clean').first().json.annex_code }}"
+            },
+            {
+              "fieldId": "annex_name",
+              "fieldValue": "={{ $('Clean').first().json.annex_name }}"
+            },
+            {
+              "fieldId": "full_text",
+              "fieldValue": "={{ $('Clean').first().json.full_text }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1880, 160],
+      "id": "4167c4c7-0c70-40e8-90a9-e63197ef2843",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -185,7 +284,16 @@
       "main": [[{ "node": "Filter", "type": "main", "index": 0 }]]
     },
     "Filter": {
-      "main": [[{ "node": "Create a row", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Check Annex Exists", "type": "main", "index": 0 }]]
+    },
+    "Check Annex Exists": {
+      "main": [[{ "node": "IF Annex Exists", "type": "main", "index": 0 }]]
+    },
+    "IF Annex Exists": {
+      "main": [
+        [{ "node": "Update Annex", "type": "main", "index": 0 }],
+        [{ "node": "Create a row", "type": "main", "index": 0 }]
+      ]
     }
   },
   "active": true,
