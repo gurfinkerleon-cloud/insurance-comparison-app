@@ -189,7 +189,18 @@
       "parameters": {
         "operation": "update",
         "tableId": "master_annexes",
-        "id": "={{ $json.id }}",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "annex_code",
+              "condition": "eq",
+              "keyValue": "={{ $('Clean').first().json.annex_code }}"
+            }
+          ]
+        },
+        "dataToSend": "defineBelow",
         "fieldsUi": {
           "fieldValues": [
             {
