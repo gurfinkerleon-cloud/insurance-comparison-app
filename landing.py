@@ -6,7 +6,9 @@ Run:  streamlit run landing.py
 import io
 import json
 import os
+import random
 import re
+import time
 
 import requests
 import streamlit as st
@@ -199,7 +201,19 @@ label {
 
 
 # ── SESSION STATE ──────────────────────────────────────────────────────────────
-for k, v in {"step": "form", "reg_name": "", "reg_phone": ""}.items():
+DEFAULTS = {
+    "step": "form",          # form | verify | login | dashboard | no_pdf
+    "reg_name": "",
+    "reg_phone": "",
+    "reg_tz": "",
+    "reg_annex_codes": [],
+    "otp_code": "",
+    "otp_expires": 0.0,
+    "otp_context": "",       # new_pdf | new_no_pdf | login
+    "user_profile": None,
+    "user_annexes": [],
+}
+for k, v in DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
@@ -258,7 +272,7 @@ def _validate_teudat_zehut(tz: str) -> bool:
     return total % 10 == 0
 
 
-def _send_whatsapp_welcome(phone: str, name: str) -> bool:
+def _wa_send(phone: str, message: str) -> bool:
     instance = os.getenv("GREEN_API_INSTANCE")
     token = os.getenv("GREEN_API_TOKEN")
     if not instance or not token:
@@ -266,23 +280,37 @@ def _send_whatsapp_welcome(phone: str, name: str) -> bool:
     digits = re.sub(r"\D", "", phone)
     if digits.startswith("0"):
         digits = "972" + digits[1:]
-    chat_id = f"{digits}@c.us"
-    message = (
-        f"שלום {name}! 👋\n\n"
-        f"ברוכים הבאים ל-BituachBot 🛡️\n\n"
-        f"אני כאן כדי לעזור לך להבין בדיוק מה הביטוח שלך מכסה.\n\n"
-        f"פשוט שלח לי שאלה — לדוגמה:\n"
-        f"• \"יש לי כיסוי לכירופרקטיקה?\"\n"
-        f"• \"כמה ההשתתפות העצמית ב-MRI?\"\n"
-        f"• \"מה הכיסוי לפיזיותרפיה?\"\n\n"
-        f"מה תרצה לדעת? 😊"
-    )
     url = f"https://api.green-api.com/waInstance{instance}/sendMessage/{token}"
     try:
-        resp = requests.post(url, json={"chatId": chat_id, "message": message}, timeout=10)
-        return resp.status_code == 200
+        r = requests.post(url, json={"chatId": f"{digits}@c.us", "message": message}, timeout=10)
+        return r.status_code == 200
     except Exception:
         return False
+
+
+def _send_otp(phone: str, name: str) -> str:
+    code = str(random.randint(100000, 999999))
+    st.session_state.otp_code = code
+    st.session_state.otp_expires = time.time() + 600
+    _wa_send(phone, f"שלום {name}! 👋\nקוד האימות שלך ל-BituachBot הוא:\n\n*{code}*\n\nתקף ל-10 דקות.")
+    return code
+
+
+def _send_ready(phone: str, name: str):
+    _wa_send(phone,
+        f"שלום {name}! 🛡️\n\nהכל מוכן! הפוליסה שלך נקלטה במערכת.\n\n"
+        f"מה תרצה לדעת? 😊\n\n"
+        f"לדוגמה:\n• יש לי כיסוי לכירופרקטיקה?\n• כמה ההשתתפות העצמית ב-MRI?\n• מה הכיסוי לפיזיותרפיה?"
+    )
+
+
+def _send_pending(phone: str, name: str):
+    _wa_send(phone,
+        f"שלום {name}! 👋\n\nנרשמת בהצלחה ל-BituachBot! 🛡️\n\n"
+        f"שמנו לב שעדיין לא העלית את קובץ הפוליסה שלך.\n"
+        f"בקרוב אחד מהצוות שלנו יצור איתך קשר כדי לעזור לך להעלות אותה למערכת.\n\n"
+        f"נדבר בקרוב! 😊"
+    )
 
 
 # ── LEFT PANEL (hero) ──────────────────────────────────────────────────────────
@@ -306,20 +334,21 @@ def _hero():
 
 
 # ── PAGES ──────────────────────────────────────────────────────────────────────
+def _logo():
+    st.markdown('<div class="form-logo"><span style="font-size:2rem">🛡️</span><span class="form-logo-text">BituachBot</span></div>', unsafe_allow_html=True)
+
+
 def page_form():
     left, right = st.columns([1, 1])
-
     with left:
         _hero()
-
     with right:
-        st.markdown('<div class="form-logo"><span style="font-size:2rem">🛡️</span><span class="form-logo-text">BituachBot</span></div>', unsafe_allow_html=True)
+        _logo()
         st.markdown('<div class="form-title">רשום פשוט ומהיר</div>', unsafe_allow_html=True)
 
         full_name = st.text_input("שם מלא", placeholder="ישראל ישראלי")
         phone = st.text_input("טלפון נייד", placeholder="050-1234567")
         teudat_zehut = st.text_input("תעודת זהות", placeholder="123456789", max_chars=9)
-
         uploaded = st.file_uploader("העלאת קובץ PDF (רשות)", type=["pdf"])
 
         annex_codes: list[str] = []
@@ -333,7 +362,6 @@ def page_form():
                     st.success(f"זוהו {len(annex_codes)} נספחים: {' · '.join(annex_codes)}")
 
         st.markdown("<br>", unsafe_allow_html=True)
-
         if st.button("הירשמו — זה בחינם!", type="primary", use_container_width=True):
             errors = []
             clean_phone = phone.strip().replace("-", "").replace(" ", "")
@@ -341,7 +369,7 @@ def page_form():
             if not full_name.strip():
                 errors.append("נא להזין שם מלא.")
             if not re.match(r"^05\d{8}$", clean_phone):
-                errors.append("מספר טלפון לא תקין (חייב להתחיל ב-05 ולהיות בן 10 ספרות).")
+                errors.append("מספר טלפון לא תקין.")
             if not _validate_teudat_zehut(clean_tz):
                 errors.append("תעודת זהות לא תקינה.")
             if errors:
@@ -350,47 +378,179 @@ def page_form():
             else:
                 db = _db()
                 with st.spinner("רושם..."):
-                    ok, msg = db.register_user_with_policies(
-                        clean_phone, full_name.strip(), annex_codes, clean_tz
-                    )
-                if ok:
+                    ok, msg = db.register_user_with_policies(clean_phone, full_name.strip(), annex_codes, clean_tz)
+                if not ok:
+                    st.error(msg)
+                else:
                     st.session_state.reg_name = full_name.strip()
                     st.session_state.reg_phone = clean_phone
-                    _send_whatsapp_welcome(clean_phone, full_name.strip())
-                    st.session_state.step = "success"
+                    st.session_state.reg_tz = clean_tz
+                    st.session_state.reg_annex_codes = annex_codes
+                    st.session_state.otp_context = "new_pdf" if annex_codes else "new_no_pdf"
+                    with st.spinner("שולח קוד אימות..."):
+                        _send_otp(clean_phone, full_name.strip())
+                    st.session_state.step = "verify"
                     st.rerun()
-                else:
-                    st.error(msg)
 
-        st.markdown(
-            '<p class="terms-note">בהרשמה אני מסכימ/ה ל<a href="#">תנאי השימוש</a> ול<a href="#">מדיניות הפרטיות</a></p>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<p class="terms-note">בהרשמה אני מסכימ/ה ל<a href="#">תנאי השימוש</a> ול<a href="#">מדיניות הפרטיות</a></p>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown('<p style="text-align:center;font-size:0.9rem;color:#6B7280;">כבר רשום?</p>', unsafe_allow_html=True)
+        if st.button("כניסה עם טלפון", use_container_width=True):
+            st.session_state.step = "login"
+            st.rerun()
 
 
-def page_success():
+def page_login():
     left, right = st.columns([1, 1])
-
     with left:
         _hero()
-
     with right:
-        st.markdown('<div class="form-logo"><span style="font-size:2rem">🛡️</span><span class="form-logo-text">BituachBot</span></div>', unsafe_allow_html=True)
+        _logo()
+        st.markdown('<div class="form-title">כניסה למערכת</div>', unsafe_allow_html=True)
+        phone = st.text_input("טלפון נייד", placeholder="050-1234567")
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("שלח קוד אימות לוואטסאפ", type="primary", use_container_width=True):
+            clean_phone = phone.strip().replace("-", "").replace(" ", "")
+            if not re.match(r"^05\d{8}$", clean_phone):
+                st.error("מספר טלפון לא תקין.")
+            else:
+                db = _db()
+                profile = db.get_profile_by_phone(clean_phone)
+                if not profile:
+                    st.error("מספר טלפון לא נמצא במערכת. אנא הירשם.")
+                else:
+                    st.session_state.reg_phone = clean_phone
+                    st.session_state.reg_name = profile.get("full_name", "")
+                    st.session_state.otp_context = "login"
+                    with st.spinner("שולח קוד..."):
+                        _send_otp(clean_phone, profile.get("full_name", ""))
+                    st.session_state.step = "verify"
+                    st.rerun()
+        if st.button("← חזרה להרשמה"):
+            st.session_state.step = "form"
+            st.rerun()
+
+
+def page_verify():
+    left, right = st.columns([1, 1])
+    with left:
+        _hero()
+    with right:
+        _logo()
+        st.markdown('<div class="form-title">אימות מספר טלפון</div>', unsafe_allow_html=True)
+        st.markdown(f'<p style="text-align:center;color:#6B7280;direction:rtl;">שלחנו קוד בן 6 ספרות לוואטסאפ שלך<br><strong>{st.session_state.reg_phone}</strong></p>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        code_input = st.text_input("קוד אימות", placeholder="123456", max_chars=6)
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("אמת ➤", type="primary", use_container_width=True):
+            if time.time() > st.session_state.otp_expires:
+                st.error("הקוד פג תוקף. בקש קוד חדש.")
+            elif code_input.strip() != st.session_state.otp_code:
+                st.error("קוד שגוי. נסה שוב.")
+            else:
+                ctx = st.session_state.otp_context
+                phone = st.session_state.reg_phone
+                name = st.session_state.reg_name
+                db = _db()
+                if ctx == "new_pdf":
+                    _send_ready(phone, name)
+                    st.session_state.user_profile = db.get_profile_by_phone(phone)
+                    st.session_state.user_annexes = db.get_user_annexes(phone)
+                    st.session_state.step = "dashboard"
+                elif ctx == "new_no_pdf":
+                    _send_pending(phone, name)
+                    st.session_state.step = "no_pdf"
+                else:
+                    st.session_state.user_profile = db.get_profile_by_phone(phone)
+                    st.session_state.user_annexes = db.get_user_annexes(phone)
+                    st.session_state.step = "dashboard"
+                st.rerun()
+        if st.button("שלח קוד חדש"):
+            _send_otp(st.session_state.reg_phone, st.session_state.reg_name)
+            st.success("נשלח קוד חדש!")
+
+
+def page_no_pdf():
+    left, right = st.columns([1, 1])
+    with left:
+        _hero()
+    with right:
+        _logo()
         st.markdown(f"""
 <div class="success-wrap">
-  <div class="success-icon">🎉</div>
+  <div class="success-icon">✅</div>
   <div class="success-title">נרשמת בהצלחה, {st.session_state.reg_name}!</div>
-  <div class="success-sub">נשלח לך הודעה בוואטסאפ בקרוב 📱</div>
+  <div class="success-sub" style="margin-top:12px;">
+    שלחנו לך הודעה בוואטסאפ 📱<br><br>
+    בקרוב אחד מהצוות שלנו יצור איתך קשר כדי לעזור לך להעלות את קובץ הפוליסה שלך למערכת.
+  </div>
 </div>
 """, unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("← חזרה"):
+        if st.button("← חזרה לדף הבית"):
+            st.session_state.step = "form"
+            st.rerun()
+
+
+def page_dashboard():
+    profile = st.session_state.user_profile or {}
+    annexes = st.session_state.user_annexes or []
+    name = profile.get("full_name", "לקוח יקר")
+
+    st.markdown(f"""
+<div style="background:#F0FDF4;padding:32px 48px 24px;direction:rtl;border-bottom:1px solid #D1FAE5;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+    <span style="font-size:1.5rem">🛡️</span>
+    <span style="font-size:1.2rem;font-weight:700;color:#16B364;">BituachBot</span>
+  </div>
+  <h2 style="font-size:1.8rem;font-weight:800;color:#111827;margin:0;">שלום, {name}! 👋</h2>
+  <p style="color:#6B7280;margin:4px 0 0;">הנה סיכום הפוליסות שלך</p>
+</div>
+""", unsafe_allow_html=True)
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.markdown("### 📄 הנספחים שלך")
+        if not annexes:
+            st.info("לא נמצאו נספחים. העלה קובץ מפרט להוספת הכיסויים שלך.")
+        for ann in annexes:
+            code = ann.get("annex_code", "")
+            ann_name = ann.get("annex_name") or "נספח"
+            company = ann.get("company_name", "")
+            has_text = bool(ann.get("full_text"))
+            icon = "✅" if has_text else "⚠️"
+            with st.expander(f"{icon} נספח {code} — {ann_name} | {company}"):
+                if has_text:
+                    st.caption(ann.get("full_text", "")[:300] + "...")
+                else:
+                    st.warning("הנספח טרם הועלה לספרייה.")
+
+    with col2:
+        st.markdown("### 👤 הפרטים שלך")
+        st.markdown(f"""
+<div style="background:white;border:1px solid #E5E7EB;border-radius:12px;padding:20px;direction:rtl;">
+  <p style="margin:0 0 8px;"><strong>שם:</strong> {profile.get('full_name','')}</p>
+  <p style="margin:0 0 8px;"><strong>טלפון:</strong> {profile.get('phone_number','')}</p>
+  <p style="margin:0;"><strong>ת.ז.:</strong> {profile.get('teudat_zehut','—')}</p>
+</div>
+""", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("### 💬 הבוט שלך")
+        st.info("שלח הודעה לבוט בוואטסאפ בכל שאלה על הכיסוי שלך!")
+        if st.button("🚪 התנתק", use_container_width=True):
+            for k in DEFAULTS:
+                st.session_state[k] = DEFAULTS[k]
             st.session_state.step = "form"
             st.rerun()
 
 
 # ── ROUTER ─────────────────────────────────────────────────────────────────────
-if st.session_state.step == "success":
-    page_success()
-else:
-    page_form()
+pages = {
+    "form": page_form,
+    "login": page_login,
+    "verify": page_verify,
+    "no_pdf": page_no_pdf,
+    "dashboard": page_dashboard,
+}
+pages.get(st.session_state.step, page_form)()
