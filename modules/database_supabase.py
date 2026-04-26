@@ -335,28 +335,31 @@ class SupabaseDatabase:
             result = self.client.table("policy_chunks").select("chunk_text").eq(
                 "policy_id", policy_id
             ).execute()
-            
+
             query_lower = query.lower()
             scored = []
-            
+
             for row in result.data:
                 text = row['chunk_text']
+                if not text or not text.strip():
+                    continue
+
                 score = 0
-                
+
                 # Boost for price-related queries
                 if 'מחיר' in query_lower or 'עלות' in query_lower or 'פרמיה' in query_lower:
                     if 'גיל' in text.lower() or 'מחיר' in text.lower() or 'פרמיה' in text.lower():
                         score += 10
-                
+
                 # Count keyword matches
                 score += sum(1 for word in query_lower.split() if word in text.lower())
-                
+
                 if score > 0:
                     scored.append({'text': text, 'score': score})
-            
+
             scored.sort(key=lambda x: x['score'], reverse=True)
             return scored[:top_k]
-            
+
         except Exception as e:
             print(f"Error searching chunks: {e}")
             return []

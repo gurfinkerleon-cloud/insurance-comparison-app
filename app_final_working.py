@@ -1359,16 +1359,18 @@ elif st.session_state.page == "❓ שאלות":
                                                     location_found = True
                                                     break  # Found answer, stop searching
                                             
-                                            # Regular context building
-                                            context = f"=== פוליסה: {name} ===\n" + "\n\n".join([c['text'] for c in chunks[:8]])
-                                            all_contexts.append(context)
+                                            # Regular context building (skip empty text blocks)
+                                            valid_texts = [c['text'] for c in chunks[:8] if c.get('text', '').strip()]
+                                            if valid_texts:
+                                                context = f"=== פוליסה: {name} ===\n" + "\n\n".join(valid_texts)
+                                                all_contexts.append(context)
                                     
                                     # If location question was answered, skip Claude call
                                     if is_location_q and location_found:
                                         pass  # Already showed answer above
                                     elif all_contexts:
                                         combined = "\n\n".join(all_contexts)
-                                        
+
                                         system_prompt = """אתה מומחה ביטוח ישראלי. חלץ מידע מדויק מפוליסות.
 
 כללים:
@@ -1376,26 +1378,27 @@ elif st.session_state.page == "❓ שאלות":
 2. אל תמציא מידע
 3. ענה בעברית פשוטה וברורה
 4. השווה בין פוליסות אם יש יותר מאחת"""
-                                        
+
                                         user_content = f"""שאלה: {query}
 
 תוכן מהפוליסות:
 {combined}
 
 ענה בדיוק על סמך המידע."""
-                                        
-                                        response = fresh_claude.messages.create(
-                                            model="claude-sonnet-4-20250514",
-                                            max_tokens=1800,
-                                            system=system_prompt,
-                                            messages=[{"role": "user", "content": user_content}]
-                                        )
-                                        
-                                        answer = response.content[0].text
-                                        st.markdown("### 💡 תשובה:")
-                                        st.success(answer)
-                                        
-                                        db.save_qa(st.session_state.current_investigation_id, query, answer, selected_names)
+
+                                        if not system_prompt.strip() or not user_content.strip():
+                                            st.warning("❌ לא ניתן לשלוח בקשה ריקה")
+                                        else:
+                                            response = fresh_claude.messages.create(
+                                                model="claude-sonnet-4-20250514",
+                                                max_tokens=1800,
+                                                system=system_prompt,
+                                                messages=[{"role": "user", "content": user_content}]
+                                            )
+                                            answer = response.content[0].text
+                                            st.markdown("### 💡 תשובה:")
+                                            st.success(answer)
+                                            db.save_qa(st.session_state.current_investigation_id, query, answer, selected_names)
                                     else:
                                         st.warning("❌ לא נמצא מידע רלוונטי")
                                         
@@ -1442,24 +1445,27 @@ elif st.session_state.page == "❓ שאלות":
                                         company_context += f"\n{company}: {', '.join(info['strengths'])}\n"
                             
                             system_prompt = """אתה יועץ ביטוח ישראלי. ענה בצורה מקצועית ומפורטת."""
-                            
+
                             user_content = f"""שאלה: {query}
 {company_context}
 
 ענה על השאלה."""
-                            
-                            response = fresh_claude.messages.create(
-                                model="claude-sonnet-4-20250514",
-                                max_tokens=2000,
-                                system=system_prompt,
-                                messages=[{"role": "user", "content": user_content}]
-                            )
-                            
-                            answer = response.content[0].text
-                            st.markdown("### 💡 תשובה:")
-                            st.success(answer)
-                            
-                            db.save_qa(st.session_state.current_investigation_id, query, answer, ["מידע כללי"])
+
+                            if not system_prompt.strip() or not user_content.strip():
+                                st.warning("❌ לא ניתן לשלוח בקשה ריקה")
+                            else:
+                                response = fresh_claude.messages.create(
+                                    model="claude-sonnet-4-20250514",
+                                    max_tokens=2000,
+                                    system=system_prompt,
+                                    messages=[{"role": "user", "content": user_content}]
+                                )
+
+                                answer = response.content[0].text
+                                st.markdown("### 💡 תשובה:")
+                                st.success(answer)
+
+                                db.save_qa(st.session_state.current_investigation_id, query, answer, ["מידע כללי"])
                             
                         except Exception as e:
                             st.error(f"❌ שגיאה: {str(e)}")
