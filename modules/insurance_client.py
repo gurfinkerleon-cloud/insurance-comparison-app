@@ -31,7 +31,7 @@ class InsuranceClientDB:
         """Return the profiles row for a given phone number, or None."""
         result = (
             self.client.table("profiles")
-            .select("id, full_name, phone_number")
+            .select("id, full_name, phone_number, teudat_zehut")
             .eq("phone_number", phone)
             .execute()
         )
@@ -40,7 +40,7 @@ class InsuranceClientDB:
     # ── REGISTRATION RPC ──────────────────────────────────────────────────────
 
     def register_user_with_policies(
-        self, phone: str, full_name: str, codes: List[str]
+        self, phone: str, full_name: str, codes: List[str], teudat_zehut: str = ""
     ) -> Tuple[bool, str]:
         """
         Upsert the client profile and link all annex codes via the
@@ -49,10 +49,10 @@ class InsuranceClientDB:
         Returns (success: bool, message: str).
         """
         try:
-            self.client.rpc(
-                "register_user_with_policies",
-                {"p_phone": phone, "p_full_name": full_name, "p_codes": codes},
-            ).execute()
+            params: dict = {"p_phone": phone, "p_full_name": full_name, "p_codes": codes}
+            if teudat_zehut:
+                params["p_teudat_zehut"] = teudat_zehut
+            self.client.rpc("register_user_with_policies", params).execute()
             return True, "הרישום הושלם בהצלחה!"
         except Exception as e:
             return False, f"שגיאה ברישום: {str(e)}"
