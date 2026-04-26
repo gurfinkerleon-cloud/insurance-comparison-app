@@ -1,11 +1,6 @@
 """
 BituachBot – Landing Page & Signup
 Run:  streamlit run landing.py
-
-Required env vars:
-  SUPABASE_URL          - https://...supabase.co
-  SUPABASE_SERVICE_KEY  - Service Role key
-  ANTHROPIC_API_KEY     - Claude API key (for PDF extraction)
 """
 
 import io
@@ -28,120 +23,223 @@ except ImportError:
 load_dotenv()
 
 st.set_page_config(
-    page_title="BituachBot – האסיסטנט לביטוח שלך",
+    page_title="BituachBot",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# ── STYLES ─────────────────────────────────────────────────────────────────────
+# ── GLOBAL STYLES ──────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;600;700;800&display=swap');
 
-  html, body, [class*="css"] {
-    font-family: 'Heebo', sans-serif !important;
-    direction: rtl !important;
-  }
-  .main .block-container {
-    padding-top: 0 !important;
-    max-width: 900px;
-  }
+/* Reset & base */
+*, html, body, [class*="css"] {
+  font-family: 'Heebo', sans-serif !important;
+  box-sizing: border-box;
+}
+html, body { margin: 0; padding: 0; }
 
-  /* ── Hero ── */
-  .hero {
-    background: linear-gradient(135deg, #1a237e 0%, #0d47a1 60%, #1565c0 100%);
-    color: white;
-    padding: 70px 40px 60px;
-    text-align: center;
-    border-radius: 0 0 32px 32px;
-    margin-bottom: 48px;
-  }
-  .hero h1 { font-size: 2.8rem; font-weight: 800; margin-bottom: 16px; }
-  .hero p  { font-size: 1.2rem; font-weight: 300; opacity: 0.9; max-width: 600px; margin: 0 auto 28px; }
-  .badge {
-    display: inline-block; background: rgba(255,255,255,0.18);
-    border: 1px solid rgba(255,255,255,0.35);
-    border-radius: 20px; padding: 4px 16px; font-size: 0.85rem;
-    margin-bottom: 18px;
-  }
+/* Hide Streamlit chrome */
+#MainMenu, header, footer { display: none !important; }
+.stDeployButton { display: none !important; }
+[data-testid="stToolbar"] { display: none !important; }
+[data-testid="stDecoration"] { display: none !important; }
+.stApp > header { display: none !important; }
 
-  /* ── Feature cards ── */
-  .features { display: flex; gap: 20px; margin-bottom: 48px; flex-wrap: wrap; }
-  .feature-card {
-    flex: 1; min-width: 220px;
-    background: white; border: 1px solid #e8eaf6;
-    border-radius: 16px; padding: 28px 22px; text-align: center;
-    box-shadow: 0 2px 12px rgba(26,35,126,0.07);
-  }
-  .feature-card .icon { font-size: 2.2rem; margin-bottom: 12px; }
-  .feature-card h3 { font-size: 1.05rem; font-weight: 700; color: #1a237e; margin-bottom: 8px; }
-  .feature-card p  { font-size: 0.9rem; color: #555; line-height: 1.5; margin: 0; }
+/* Remove default page padding */
+.main .block-container {
+  padding: 0 !important;
+  max-width: 100% !important;
+}
 
-  /* ── Form card ── */
-  .form-card {
-    background: white; border: 1px solid #e8eaf6;
-    border-radius: 20px; padding: 40px 36px;
-    box-shadow: 0 4px 24px rgba(26,35,126,0.10);
-    margin-bottom: 48px;
-  }
-  .form-card h2 { color: #1a237e; font-size: 1.6rem; font-weight: 700; margin-bottom: 6px; }
-  .form-card .subtitle { color: #666; margin-bottom: 28px; font-size: 0.95rem; }
+/* ── Split layout ── */
+[data-testid="stHorizontalBlock"] {
+  gap: 0 !important;
+  align-items: stretch !important;
+  min-height: 100vh;
+}
 
-  /* ── Success card ── */
-  .success-card {
-    background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
-    border: 1px solid #a5d6a7; border-radius: 20px;
-    padding: 48px 36px; text-align: center; margin-bottom: 48px;
-  }
-  .success-card h2 { color: #2e7d32; font-size: 2rem; margin-bottom: 12px; }
-  .success-card p  { color: #388e3c; font-size: 1.05rem; margin: 0; }
+/* Left panel – lavender */
+[data-testid="stHorizontalBlock"] > div:first-child {
+  background: #EEEEFF !important;
+  min-height: 100vh !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 60px 48px !important;
+  direction: rtl;
+}
 
-  /* ── How it works ── */
-  .steps { display: flex; gap: 16px; margin-bottom: 48px; flex-wrap: wrap; }
-  .step {
-    flex: 1; min-width: 180px; text-align: center;
-    padding: 24px 16px;
-  }
-  .step-num {
-    width: 44px; height: 44px; border-radius: 50%;
-    background: #1a237e; color: white;
-    font-size: 1.2rem; font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-    margin: 0 auto 14px;
-  }
-  .step h4 { font-size: 0.95rem; font-weight: 700; color: #1a237e; margin-bottom: 6px; }
-  .step p  { font-size: 0.85rem; color: #666; margin: 0; }
+/* Right panel – white */
+[data-testid="stHorizontalBlock"] > div:last-child {
+  background: white !important;
+  min-height: 100vh !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 60px 48px !important;
+  direction: rtl;
+}
 
-  /* ── Input overrides ── */
-  .stTextInput > div > div > input,
-  .stTextArea > div > div > textarea {
-    direction: rtl !important; text-align: right !important;
-    border-radius: 10px !important;
-  }
-  label { direction: rtl !important; font-weight: 600 !important; }
-  .stButton > button {
-    border-radius: 12px !important; font-size: 1rem !important;
-    padding: 0.6rem 0 !important; font-weight: 700 !important;
-  }
-  .stAlert { direction: rtl !important; text-align: right !important; }
+/* Typography */
+.panel-tagline {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #1a1a2e;
+  line-height: 1.35;
+  text-align: right;
+  direction: rtl;
+}
+.panel-tagline span { color: #3b4cca; }
+.panel-sub {
+  font-size: 1.05rem;
+  color: #555;
+  margin-top: 16px;
+  line-height: 1.6;
+  text-align: right;
+  direction: rtl;
+}
+.bullet-list {
+  list-style: none;
+  padding: 0;
+  margin-top: 28px;
+}
+.bullet-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+  font-size: 0.95rem;
+  color: #333;
+  direction: rtl;
+}
+.bullet-list li::before {
+  content: "✓";
+  color: #3b4cca;
+  font-weight: 700;
+  flex-shrink: 0;
+}
 
-  /* ── Footer ── */
-  .footer {
-    text-align: center; color: #999; font-size: 0.8rem;
-    padding: 24px 0 32px;
-  }
+/* Form card */
+.form-logo {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #3b4cca;
+  text-align: center;
+  margin-bottom: 28px;
+  letter-spacing: -0.5px;
+}
+.form-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  text-align: center;
+  margin-bottom: 6px;
+  direction: rtl;
+}
+.form-sub {
+  text-align: center;
+  color: #888;
+  font-size: 0.9rem;
+  margin-bottom: 28px;
+  direction: rtl;
+}
+.form-sub a { color: #3b4cca; text-decoration: none; }
+
+/* Input styling */
+.stTextInput > div > div > input {
+  background: #F5F6FF !important;
+  border: 1.5px solid #E0E3FF !important;
+  border-radius: 10px !important;
+  padding: 10px 14px !important;
+  direction: rtl !important;
+  text-align: right !important;
+  font-size: 0.95rem !important;
+  transition: border-color 0.2s;
+}
+.stTextInput > div > div > input:focus {
+  border-color: #3b4cca !important;
+  background: white !important;
+}
+label {
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  color: #444 !important;
+  direction: rtl !important;
+}
+
+/* Primary button */
+.stButton > button[kind="primary"] {
+  background: #3b4cca !important;
+  border: none !important;
+  border-radius: 50px !important;
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+  padding: 0.7rem 0 !important;
+  width: 100% !important;
+  color: white !important;
+  cursor: pointer !important;
+  transition: background 0.2s, transform 0.1s !important;
+}
+.stButton > button[kind="primary"]:hover {
+  background: #2d3bb0 !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Secondary/back button */
+.stButton > button:not([kind="primary"]) {
+  background: transparent !important;
+  border: none !important;
+  color: #3b4cca !important;
+  font-size: 0.9rem !important;
+  padding: 0 !important;
+  text-decoration: underline !important;
+}
+
+/* File uploader */
+[data-testid="stFileUploader"] {
+  background: #F5F6FF !important;
+  border: 1.5px dashed #C5CAFF !important;
+  border-radius: 10px !important;
+  direction: rtl !important;
+}
+
+/* Divider */
+.custom-divider {
+  border: none;
+  border-top: 1px solid #EBEBEB;
+  margin: 20px 0;
+}
+
+/* Success */
+.success-wrap { text-align: center; direction: rtl; }
+.success-icon { font-size: 3.5rem; margin-bottom: 16px; }
+.success-title { font-size: 2rem; font-weight: 800; color: #1a1a2e; margin-bottom: 12px; }
+.success-text { font-size: 1rem; color: #555; line-height: 1.7; }
+.whatsapp-box {
+  background: #F5F6FF;
+  border: 1.5px solid #E0E3FF;
+  border-radius: 14px;
+  padding: 24px 20px;
+  margin-top: 24px;
+  text-align: right;
+  direction: rtl;
+}
+.whatsapp-box h4 { color: #3b4cca; font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
+.whatsapp-box p { color: #444; font-size: 0.9rem; line-height: 1.6; margin: 0; }
+
+/* Alerts */
+.stAlert { direction: rtl !important; text-align: right !important; border-radius: 10px !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ── SESSION STATE ──────────────────────────────────────────────────────────────
-def _init():
-    for k, v in {"step": "landing", "registered_name": "", "registered_phone": ""}.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
-
-_init()
+for k, v in {"step": "form", "reg_name": "", "reg_phone": ""}.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 
 # ── HELPERS ────────────────────────────────────────────────────────────────────
@@ -163,7 +261,6 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
 
 
 def _extract_annex_codes(text: str) -> list[str]:
-    """Ask Claude to pull annex codes from the mifrat text."""
     client = _claude()
     prompt = f"""זהו טקסט ממפרט ביטוח ישראלי. חלץ את כל קודי הנספחים (מספרים בני 4-6 ספרות).
 החזר JSON בלבד: {{"annex_codes": ["8713","6792"]}}
@@ -184,7 +281,6 @@ def _extract_annex_codes(text: str) -> list[str]:
 
 
 def _validate_teudat_zehut(tz: str) -> bool:
-    """Israeli ID checksum validation."""
     tz = tz.strip().zfill(9)
     if not tz.isdigit() or len(tz) != 9:
         return False
@@ -195,195 +291,131 @@ def _validate_teudat_zehut(tz: str) -> bool:
     return total % 10 == 0
 
 
-# ── HERO + FEATURES (shown on landing & form steps) ───────────────────────────
-def _render_hero():
+# ── LEFT PANEL ─────────────────────────────────────────────────────────────────
+def _left_panel():
     st.markdown("""
-<div class="hero">
-  <div class="badge">🇮🇱 לשוק הישראלי</div>
-  <h1>🛡️ BituachBot</h1>
-  <p>האסיסטנט החכם שמסביר לך בדיוק מה מכסה הביטוח שלך — בשניות, בשפה שלך.</p>
+<div>
+  <div class="panel-tagline">
+    עם <span>BituachBot</span><br>
+    תבין סוף סוף<br>
+    מה הביטוח שלך מכסה
+  </div>
+  <p class="panel-sub">שאל שאלות על הכיסוי שלך בוואטסאפ — ותקבל תשובה מדויקת לפי הנספחים שלך.</p>
+  <ul class="bullet-list">
+    <li>מבוסס על הפוליסה האישית שלך</li>
+    <li>תשובות מיידיות בעברית, ערבית ורוסית</li>
+    <li>כירופרקטיקה, MRI, פיזיותרפיה ועוד</li>
+    <li>ללא המתנה לנציג, 24/7</li>
+  </ul>
 </div>
 """, unsafe_allow_html=True)
 
 
-def _render_features():
-    st.markdown("""
-<div class="features">
-  <div class="feature-card">
-    <div class="icon">🔍</div>
-    <h3>תשובות מיידיות</h3>
-    <p>שאל בוואטסאפ "יש לי כיסוי ל-MRI?" וקבל תשובה מפורטת תוך שניות.</p>
-  </div>
-  <div class="feature-card">
-    <div class="icon">📄</div>
-    <h3>מבוסס על הפוליסה שלך</h3>
-    <p>הבוט קורא את הנספחים שלך ועונה בדיוק לפי הכיסוי האישי שלך.</p>
-  </div>
-  <div class="feature-card">
-    <div class="icon">🌐</div>
-    <h3>עברית | ערבית | רוסית</h3>
-    <p>שאל בכל שפה שנוחה לך — הבוט מבין ועונה.</p>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-
-def _render_how_it_works():
-    st.markdown("""
-<div class="steps">
-  <div class="step"><div class="step-num">1</div><h4>נרשמים פה</h4><p>ממלאים את הפרטים ומעלים את המפרט</p></div>
-  <div class="step"><div class="step-num">2</div><h4>מוסיפים לאנשי קשר</h4><p>שומרים את מספר הבוט בוואטסאפ</p></div>
-  <div class="step"><div class="step-num">3</div><h4>שואלים בחופשיות</h4><p>"יש לי כיסוי לכירופרקטיקה?" "מה ההשתתפות בניתוח?"</p></div>
-</div>
-""", unsafe_allow_html=True)
-
-
-# ── LANDING PAGE ───────────────────────────────────────────────────────────────
-def page_landing():
-    _render_hero()
-    _render_features()
-    _render_how_it_works()
-
-    st.markdown('<div class="form-card">', unsafe_allow_html=True)
-    st.markdown("## רוצה להצטרף? זה לוקח דקה אחת ↓")
-    if st.button("✅ הרשמה חינם", type="primary", use_container_width=True):
-        st.session_state.step = "form"
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="footer">BituachBot © 2025 · הנתונים שלך מאובטחים ולא משותפים עם גורמים חיצוניים.</div>', unsafe_allow_html=True)
-
-
-# ── SIGNUP FORM ────────────────────────────────────────────────────────────────
+# ── REGISTRATION FORM ──────────────────────────────────────────────────────────
 def page_form():
-    _render_hero()
+    left, right = st.columns([1, 1])
 
-    st.markdown('<div class="form-card">', unsafe_allow_html=True)
-    st.markdown("## 📝 הרשמה לשירות")
-    st.markdown('<p class="subtitle">מלא את הפרטים הבאים. כל השדות חובה למעט העלאת המפרט.</p>', unsafe_allow_html=True)
+    with left:
+        _left_panel()
 
-    col1, col2 = st.columns(2)
-    with col1:
-        full_name = st.text_input("שם מלא *", placeholder="ישראל ישראלי")
-    with col2:
-        phone = st.text_input("מספר טלפון *", placeholder="0501234567")
+    with right:
+        st.markdown('<div class="form-logo">🛡️ BituachBot</div>', unsafe_allow_html=True)
+        st.markdown('<div class="form-title">הירשמו! זה מהיר וקל :)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="form-sub">כבר רשומים? <a href="#">להתחברות</a></div>', unsafe_allow_html=True)
 
-    teudat_zehut = st.text_input("תעודת זהות *", placeholder="9 ספרות", max_chars=9)
+        full_name = st.text_input("שם מלא", placeholder="ישראל ישראלי", key="f_name")
+        phone = st.text_input("טלפון נייד", placeholder="0501234567", key="f_phone")
+        teudat_zehut = st.text_input("תעודת זהות", placeholder="9 ספרות", max_chars=9, key="f_tz")
 
-    st.divider()
-    st.markdown("**העלאת מפרט ביטוח** (רשות — ניתן לשלוח מאוחר יותר)")
-    st.caption("העלה את קובץ המפרט (PDF) כדי שנזהה אוטומטית את הנספחים שלך.")
+        st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
+        st.markdown("<small style='color:#888;direction:rtl;'>**העלאת מפרט ביטוח** — רשות (ניתן לשלוח מאוחר יותר)</small>", unsafe_allow_html=True)
 
-    uploaded = st.file_uploader("בחר קובץ מפרט (PDF)", type=["pdf"], key="mifrat_upload")
+        uploaded = st.file_uploader("בחר קובץ PDF", type=["pdf"], key="f_pdf", label_visibility="collapsed")
 
-    annex_codes: list[str] = []
-    if uploaded and PDF_SUPPORT:
-        with st.spinner("מנתח את המפרט..."):
-            pdf_text = _extract_pdf_text(uploaded.read())
-        if pdf_text.strip():
-            with st.spinner("מזהה נספחים..."):
-                annex_codes = _extract_annex_codes(pdf_text)
-            if annex_codes:
-                st.success(f"זוהו {len(annex_codes)} נספחים: {' | '.join(annex_codes)}")
+        annex_codes: list[str] = []
+        if uploaded and PDF_SUPPORT:
+            with st.spinner("מנתח מפרט..."):
+                pdf_text = _extract_pdf_text(uploaded.read())
+            if pdf_text.strip():
+                with st.spinner("מזהה נספחים..."):
+                    annex_codes = _extract_annex_codes(pdf_text)
+                if annex_codes:
+                    st.success(f"זוהו {len(annex_codes)} נספחים: {' · '.join(annex_codes)}")
+                else:
+                    st.warning("לא זוהו קודי נספחים.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        if st.button("הירשמו — זה בחינם!", type="primary", use_container_width=True):
+            errors = []
+            clean_phone = phone.strip().replace("-", "").replace(" ", "")
+            clean_tz = teudat_zehut.strip()
+
+            if not full_name.strip():
+                errors.append("נא להזין שם מלא.")
+            if not re.match(r"^05\d{8}$", clean_phone):
+                errors.append("מספר טלפון לא תקין (חייב להתחיל ב-05 ולהיות בן 10 ספרות).")
+            if not _validate_teudat_zehut(clean_tz):
+                errors.append("תעודת זהות לא תקינה.")
+
+            if errors:
+                for e in errors:
+                    st.error(e)
             else:
-                st.warning("לא זוהו קודי נספחים. ניתן להוסיף ידנית לאחר ההרשמה.")
-        else:
-            st.warning("לא ניתן לחלץ טקסט מהקובץ (ייתכן שמדובר ב-PDF סרוק).")
+                db = _db()
+                with st.spinner("רושם..."):
+                    ok, msg = db.register_user_with_policies(
+                        clean_phone, full_name.strip(), annex_codes, clean_tz
+                    )
+                if ok:
+                    st.session_state.reg_name = full_name.strip()
+                    st.session_state.reg_phone = clean_phone
+                    st.session_state.step = "success"
+                    st.rerun()
+                else:
+                    st.error(msg)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    submit = st.button("✅ סיים הרשמה", type="primary", use_container_width=True)
-
-    if submit:
-        # ── Validation ──
-        errors = []
-        clean_phone = phone.strip().replace("-", "").replace(" ", "")
-        clean_tz = teudat_zehut.strip()
-
-        if not full_name.strip():
-            errors.append("נא להזין שם מלא.")
-        if not re.match(r"^05\d{8}$", clean_phone):
-            errors.append("מספר טלפון לא תקין (חייב להתחיל ב-05 ולהיות בן 10 ספרות).")
-        if not _validate_teudat_zehut(clean_tz):
-            errors.append("תעודת זהות לא תקינה.")
-
-        if errors:
-            for e in errors:
-                st.error(e)
-        else:
-            db = _db()
-            with st.spinner("רושם אותך במערכת..."):
-                ok, msg = db.register_user_with_policies(
-                    clean_phone, full_name.strip(), annex_codes, clean_tz
-                )
-            if ok:
-                st.session_state.registered_name = full_name.strip()
-                st.session_state.registered_phone = clean_phone
-                st.session_state.step = "success"
-                st.rerun()
-            else:
-                st.error(msg)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("← חזרה", use_container_width=False):
-        st.session_state.step = "landing"
-        st.rerun()
-
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(
+            "<p style='text-align:center;font-size:0.75rem;color:#aaa;margin-top:16px;direction:rtl;'>"
+            "בלחיצה על הכפתור אתה מאשר את <a href='#' style='color:#3b4cca;'>תנאי השימוש</a> ו<a href='#' style='color:#3b4cca;'>מדיניות הפרטיות</a>"
+            "</p>",
+            unsafe_allow_html=True,
+        )
 
 
 # ── SUCCESS PAGE ───────────────────────────────────────────────────────────────
 def page_success():
-    _render_hero()
+    left, right = st.columns([1, 1])
 
-    name = st.session_state.registered_name
-    st.markdown(f"""
-<div class="success-card">
-  <div style="font-size:3.5rem; margin-bottom:16px">🎉</div>
-  <h2>ברוכים הבאים, {name}!</h2>
-  <p>הרישום הושלם בהצלחה. עכשיו אפשר להתחיל לשאול שאלות.</p>
+    with left:
+        _left_panel()
+
+    with right:
+        st.markdown('<div class="form-logo">🛡️ BituachBot</div>', unsafe_allow_html=True)
+
+        name = st.session_state.reg_name
+        st.markdown(f"""
+<div class="success-wrap">
+  <div class="success-icon">🎉</div>
+  <div class="success-title">ברוכים הבאים, {name}!</div>
+  <div class="success-text">הרישום הושלם בהצלחה.<br>עכשיו אפשר להתחיל לשאול שאלות על הכיסוי שלך.</div>
+  <div class="whatsapp-box">
+    <h4>📱 השלב הבא — וואטסאפ</h4>
+    <p>שמור את מספר הבוט ושלח הודעה:<br>
+    <strong>"שלום, רוצה לדעת מה הכיסוי שלי"</strong><br><br>
+    הבוט יזהה אותך לפי הטלפון שמסרת ויענה לפי הנספחים שלך.</p>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
-    st.markdown('<div class="form-card">', unsafe_allow_html=True)
-    st.markdown("## 📱 השלב הבא — וואטסאפ")
-    st.markdown("""
-שמור את מספר הבוט בטלפון שלך ושלח לו הודעה:
-
-> **"שלום, אני רוצה לדעת מה הכיסוי שלי"**
-
-הבוט יזהה אותך לפי מספר הטלפון שמסרת וישיב לשאלות שלך לפי הנספחים שלך.
-""")
-
-    st.info("📌 **לא קיבלת את מספר הבוט?** צור איתנו קשר ונשלח לך אותו.")
-
-    st.divider()
-    st.markdown("### שאלות נפוצות שאפשר לשאול את הבוט")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("""
-- "יש לי כיסוי לכירופרקטיקה?"
-- "כמה ההשתתפות העצמית ב-MRI?"
-- "מה מספר הטיפולים בשנה לפיזיותרפיה?"
-""")
-    with col2:
-        st.markdown("""
-- "יש זמן המתנה לניתוח?"
-- "אלו ספקים מאושרים?"
-- "מה הכיסוי לרפואה משלימה?"
-""")
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    if st.button("🏠 חזרה לדף הבית", use_container_width=True):
-        st.session_state.step = "landing"
-        st.rerun()
-
-    st.markdown('<div class="footer">BituachBot © 2025 · הנתונים שלך מאובטחים ולא משותפים עם גורמים חיצוניים.</div>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("← חזרה לדף הרישום"):
+            st.session_state.step = "form"
+            st.rerun()
 
 
 # ── ROUTER ─────────────────────────────────────────────────────────────────────
-{
-    "landing": page_landing,
-    "form": page_form,
-    "success": page_success,
-}.get(st.session_state.step, page_landing)()
+if st.session_state.step == "success":
+    page_success()
+else:
+    page_form()
