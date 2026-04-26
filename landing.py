@@ -134,11 +134,18 @@ def _db() -> InsuranceClientDB:
     return InsuranceClientDB()
 
 
+def _get_secret(key: str) -> str:
+    try:
+        return st.secrets.get(key) or ""
+    except Exception:
+        return ""
+
+
 @st.cache_resource(show_spinner=False)
 def _claude() -> Anthropic:
-    api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "").strip()
+    api_key = _get_secret("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
-        st.error("❌ ANTHROPIC_API_KEY לא מוגדר ב-secrets")
+        st.error("❌ ANTHROPIC_API_KEY לא מוגדר")
         st.stop()
     return Anthropic(api_key=api_key)
 

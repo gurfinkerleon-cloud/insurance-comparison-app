@@ -20,9 +20,12 @@ from supabase import create_client, Client
 def _load_secret(key: str) -> str | None:
     try:
         import streamlit as st
-        return st.secrets.get(key) or os.getenv(key)
+        val = st.secrets.get(key)
+        if val:
+            return val
     except Exception:
-        return os.getenv(key)
+        pass
+    return os.getenv(key)
 
 
 class InsuranceClientDB:
