@@ -1,0 +1,636 @@
+{
+  "name": "BituachBot WhatsApp - Green API",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bituachbot-whatsapp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-600, 0],
+      "id": "node-001",
+      "name": "WhatsApp Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [-600, 200],
+      "id": "node-ack",
+      "name": "ACK Green API"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\n\nconst typeWebhook = body.typeWebhook || '';\nif (!['incomingMessageReceived'].includes(typeWebhook)) {\n  return [{ json: { skip: true } }];\n}\n\nconst chatId = body.senderData?.chatId || '';\nconst senderName = body.senderData?.senderName || '';\nconst typeMessage = body.messageData?.typeMessage || '';\n\nlet chatInput = '';\nif (typeMessage === 'textMessage') {\n  chatInput = body.messageData?.textMessageData?.textMessage || '';\n} else if (typeMessage === 'extendedTextMessage') {\n  chatInput = body.messageData?.extendedTextMessageData?.text || '';\n}\n\nconst wid = chatId.replace('@c.us', '');\nlet phone = wid.startsWith('972') ? '0' + wid.slice(3) : wid;\n\nconst hasFile = ['documentMessage', 'imageMessage'].includes(typeMessage);\nconst fileUrl = hasFile ? (body.messageData?.fileMessageData?.downloadUrl || '') : '';\nconst fileName = hasFile ? (body.messageData?.fileMessageData?.fileName || 'file.pdf') : '';\n\nreturn [{\n  json: {\n    chatId,\n    chatInput,\n    phone_number: phone,\n    phone_is_valid: /^05\\d{8}$/.test(phone),\n    has_pdf: hasFile && fileUrl !== '',\n    file_url: fileUrl,\n    file_name: fileName,\n    sender_name: senderName,\n    skip: false\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-420, 0],
+      "id": "node-002a",
+      "name": "Parse WhatsApp Input"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-valid-phone",
+              "leftValue": "={{ $json.phone_is_valid }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-240, 0],
+      "id": "node-003a",
+      "name": "IF Valid Phone"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-has-pdf",
+              "leftValue": "={{ $json.has_pdf }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-60, 0],
+      "id": "node-003b",
+      "name": "IF Has PDF"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.file_url }}",
+        "options": {
+          "response": { "response": { "responseFormat": "file", "outputPropertyName": "data" } }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [120, -200],
+      "id": "node-download",
+      "name": "Download PDF"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [340, -200],
+      "id": "node-002",
+      "name": "Extract from File",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=מהטקסט הבא של מפרט ביטוח, חלץ JSON בלבד ללא הסברים:\n{\"full_name\": \"שם מלא של המבוטח\", \"phone\": \"0521234567\", \"codes\": \"8713,6792,5409\"}\n\nחוקים:\n- full_name: שם מלא בדיוק כפי שמופיע\n- phone: מספר טלפון ישראלי 10 ספרות המתחיל ב-05, אם לא מופיע בטקסט - השאר ריק \"\"\n- codes: מספרי נספחים בני 4-6 ספרות, מופרדים בפסיקים בלבד, ללא רווחים\n- החזר JSON בלבד\n\nטקסט:\n{{ ($json.text || '').substring(0, 4000) }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [560, -200],
+      "id": "node-004",
+      "name": "Extract PDF Data"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-5-20250929",
+          "cachedResultName": "Claude Sonnet 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [560, -40],
+      "id": "node-004b",
+      "name": "Anthropic Extract Model",
+      "credentials": {
+        "anthropicApi": { "id": "0AH2aKB0F6Xrj8LV", "name": "Anthropic account" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.text || $input.first().json.output || '';\nconst clean = raw.replace(/```json|```/g, '').trim();\n\nlet data;\ntry {\n  data = JSON.parse(clean);\n} catch(e) {\n  const m = clean.match(/\\{[\\s\\S]*?\\}/);\n  try { data = m ? JSON.parse(m[0]) : { full_name: 'לא זוהה', codes: '', phone: '' }; }\n  catch(e2) { data = { full_name: 'לא זוהה', codes: '', phone: '' }; }\n}\n\nconst chatId = $('Parse WhatsApp Input').first().json.chatId || '';\nconst wid = chatId.replace('@c.us', '');\nlet phoneFromChat = wid.startsWith('972') ? '0' + wid.slice(3) : wid;\n\nconst normalize = s => (s || '').replace(/[-\\s]/g, '');\nconst fromPdf = normalize(data.phone || '').match(/05\\d{8}/);\nconst phone = phoneFromChat || (fromPdf && fromPdf[0]) || '';\n\nconst codesArray = (data.codes || '')\n  .split(/[,;\\s]+/)\n  .map(s => s.trim())\n  .filter(s => /^\\d{4,6}$/.test(s));\n\nreturn [{\n  json: {\n    phone_number: phone,\n    phone_is_valid: /^05\\d{8}$/.test(phone),\n    full_name: data.full_name || 'לא זוהה',\n    codes_array: codesArray,\n    codes_count: codesArray.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, -200],
+      "id": "node-005",
+      "name": "Parse PDF Data"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "profiles",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "phone_number", "fieldValue": "={{ $json.phone_number }}" },
+            { "fieldId": "full_name", "fieldValue": "={{ $json.full_name }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1000, -200],
+      "id": "node-008b",
+      "name": "Create Profile",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "profiles",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone_number",
+              "condition": "eq",
+              "keyValue": "={{ $('Parse PDF Data').first().json.phone_number }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1220, -200],
+      "id": "node-010",
+      "name": "Get Profile ID",
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "user_policies",
+        "deleteMatchingBehavior": "deleteAllMatching",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "user_id", "condition": "eq", "keyValue": "={{ $json.id }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1440, -200],
+      "id": "node-011",
+      "name": "Delete Old Policies",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const profileId = $('Get Profile ID').first().json.id;\nconst codesArray = $('Parse PDF Data').first().json.codes_array;\n\nif (!codesArray || codesArray.length === 0) {\n  return [{ json: { user_id: profileId, code: '__empty__', skip: true } }];\n}\n\nreturn codesArray.map(code => ({\n  json: { user_id: profileId, code: code, skip: false }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1660, -200],
+      "id": "node-012",
+      "name": "Prepare Code Items"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "master_annexes",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "annex_code", "condition": "eq", "keyValue": "={{ $json.code }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1880, -200],
+      "id": "node-013",
+      "name": "Find Annex",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-annex-found",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            },
+            {
+              "id": "cond-not-skip",
+              "leftValue": "={{ $('Prepare Code Items').item.json.skip }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2100, -200],
+      "id": "node-014",
+      "name": "IF Annex Found"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "user_policies",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "user_id", "fieldValue": "={{ $('Prepare Code Items').item.json.user_id }}" },
+            { "fieldId": "annex_id", "fieldValue": "={{ $json.id }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2320, -320],
+      "id": "node-015",
+      "name": "Create User Policy",
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "all_results",
+        "include": "noFields"
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [2540, -200],
+      "id": "node-017",
+      "name": "Wait for All Codes"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "s1", "name": "user_status", "value": "NEW_REGISTERED", "type": "string" },
+            { "id": "s2", "name": "client_name", "value": "={{ $('Parse PDF Data').first().json.full_name }}", "type": "string" },
+            { "id": "s3", "name": "codes_count", "value": "={{ $('Parse PDF Data').first().json.codes_count }}", "type": "number" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2760, -200],
+      "id": "node-018",
+      "name": "Set Registration Done"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "profiles",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "phone_number", "condition": "eq", "keyValue": "={{ $json.phone_number }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [120, 200],
+      "id": "node-006",
+      "name": "Find Profile",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "cond-profile-exists",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [340, 200],
+      "id": "node-007",
+      "name": "IF Profile Exists"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "s1", "name": "user_status", "value": "existing", "type": "string" },
+            { "id": "s2", "name": "client_name", "value": "={{ $json.full_name }}", "type": "string" },
+            { "id": "s3", "name": "user_id", "value": "={{ $json.id }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [560, 100],
+      "id": "node-007b",
+      "name": "Set Existing User"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "s1", "name": "user_status", "value": "no_profile", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [560, 300],
+      "id": "node-007c",
+      "name": "Set No Profile"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Parse WhatsApp Input').first().json.chatInput }}\n\n---\nSystem Info:\nPhone: {{ $('Parse WhatsApp Input').first().json.phone_number }}\nHas PDF: {{ $('Parse WhatsApp Input').first().json.has_pdf ? 'YES' : 'NO' }}\nUser Status: {{ $json.user_status || 'UNKNOWN' }}\n{{ $json.client_name ? 'Client Name: ' + $json.client_name : '' }}\n{{ $json.user_id ? 'User ID: ' + $json.user_id : '' }}\n{{ $json.codes_count !== undefined ? 'Codes Found: ' + $json.codes_count : '' }}",
+        "options": {
+          "systemMessage": "אתה מומחה בכיר לביטוח בריאות בישראל.\n\nכלל עליון: אל תחזיר לעולם נתוני JSON גולמיים. תמיד השב בעברית טבעית.\n\nUser Status = existing:\n✅ ברך את הלקוח בשמו (Client Name) בפעם הראשונה בלבד.\nכשהלקוח שואל שאלה על כיסוי ביטוחי:\n1. קרא get_user_policies — סנן לפי user_id מה-System Info.\n2. לכל annex_id: קרא search_database ומצא את הנספח.\n3. העתק את תוכן ה-full_text במדויק — כולל מחירים, ספקים, השתתפות עצמית.\n4. אם לא מכוסה — הפעל send_admin_notification1.\n\nUser Status = NEW_REGISTERED:\n✅ ברך את הלקוח, ציין כמה נספחים נשמרו (Codes Found), שאל במה לעזור.\nאם Codes Found = 0: הפעל send_admin_notification1.\n\nUser Status = no_profile:\nאמר: 'לא מצאתי אותך במערכת. שלח/י הודעה עם הטלפון + PDF הפוליסה מצורף'\n\nUser Status = UNKNOWN:\nבקש מספר טלפון תקין בן 10 ספרות המתחיל ב-05.\n\nשפה: עברית רהוטה. אל תמציא נתונים כספיים."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [2980, 0],
+      "id": "node-020",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-5-20250929",
+          "cachedResultName": "Claude Sonnet 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [2860, 200],
+      "id": "node-021",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": { "id": "0AH2aKB0F6Xrj8LV", "name": "Anthropic account" }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Parse WhatsApp Input').first().json.phone_number }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [3020, 200],
+      "id": "node-022",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "כלי לשליפת פרטים מלאים, השתתפויות עצמיות וזמני המתנה של נספחים מהספרייה המרכזית.",
+        "operation": "getAll",
+        "tableId": "master_annexes",
+        "returnAll": true,
+        "filterType": "none"
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [3180, 200],
+      "id": "node-023",
+      "name": "search_database",
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "כלי לשליחת מייל למנהל כשחסר נספח במערכת.",
+        "sendTo": "gurfinker.leon@gmail.com",
+        "subject": "חוסר במידע: נספח ביטוח חסר במערכת",
+        "emailType": "text",
+        "message": "={{ $fromAI(\"text\", \"פירוט הנספחים החסרים ושם הלקוח\") }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [3320, 200],
+      "id": "node-024",
+      "name": "send_admin_notification1",
+      "credentials": {
+        "gmailOAuth2": { "id": "xlI6Mm1juj80oWDc", "name": "Gmail account" }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "כלי לשליפת רשימת הנספחים של לקוח. מחזיר שורות עם user_id ו-annex_id.",
+        "operation": "getAll",
+        "tableId": "user_policies",
+        "returnAll": true,
+        "filterType": "none"
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [3320, 400],
+      "id": "node-025",
+      "name": "get_user_policies",
+      "credentials": {
+        "supabaseApi": { "id": "NJPl0jtQQasqPtql", "name": "Supabase account" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.green-api.com/waInstance7107552876/sendMessage/942c55a20b694f30956967e278b5336f71aeef9d8b154577a8",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chatId", "value": "={{ $('Parse WhatsApp Input').first().json.chatId }}" },
+            { "name": "message", "value": "={{ $json.output }}" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3200, -200],
+      "id": "node-send",
+      "name": "Send WhatsApp Response"
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [
+        [{ "node": "ACK Green API", "type": "main", "index": 0 }],
+        [{ "node": "Parse WhatsApp Input", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse WhatsApp Input": {
+      "main": [[{ "node": "IF Valid Phone", "type": "main", "index": 0 }]]
+    },
+    "IF Valid Phone": {
+      "main": [
+        [{ "node": "IF Has PDF", "type": "main", "index": 0 }],
+        [{ "node": "AI Agent", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Has PDF": {
+      "main": [
+        [{ "node": "Download PDF", "type": "main", "index": 0 }],
+        [{ "node": "Find Profile", "type": "main", "index": 0 }]
+      ]
+    },
+    "Download PDF": {
+      "main": [[{ "node": "Extract from File", "type": "main", "index": 0 }]]
+    },
+    "Extract from File": {
+      "main": [[{ "node": "Extract PDF Data", "type": "main", "index": 0 }]]
+    },
+    "Anthropic Extract Model": {
+      "ai_languageModel": [[{ "node": "Extract PDF Data", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Extract PDF Data": {
+      "main": [[{ "node": "Parse PDF Data", "type": "main", "index": 0 }]]
+    },
+    "Parse PDF Data": {
+      "main": [[{ "node": "Create Profile", "type": "main", "index": 0 }]]
+    },
+    "Create Profile": {
+      "main": [[{ "node": "Get Profile ID", "type": "main", "index": 0 }]]
+    },
+    "Get Profile ID": {
+      "main": [[{ "node": "Delete Old Policies", "type": "main", "index": 0 }]]
+    },
+    "Delete Old Policies": {
+      "main": [[{ "node": "Prepare Code Items", "type": "main", "index": 0 }]]
+    },
+    "Prepare Code Items": {
+      "main": [[{ "node": "Find Annex", "type": "main", "index": 0 }]]
+    },
+    "Find Annex": {
+      "main": [[{ "node": "IF Annex Found", "type": "main", "index": 0 }]]
+    },
+    "IF Annex Found": {
+      "main": [
+        [{ "node": "Create User Policy", "type": "main", "index": 0 }],
+        [{ "node": "Wait for All Codes", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create User Policy": {
+      "main": [[{ "node": "Wait for All Codes", "type": "main", "index": 0 }]]
+    },
+    "Wait for All Codes": {
+      "main": [[{ "node": "Set Registration Done", "type": "main", "index": 0 }]]
+    },
+    "Set Registration Done": {
+      "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
+    },
+    "Find Profile": {
+      "main": [[{ "node": "IF Profile Exists", "type": "main", "index": 0 }]]
+    },
+    "IF Profile Exists": {
+      "main": [
+        [{ "node": "Set Existing User", "type": "main", "index": 0 }],
+        [{ "node": "Set No Profile", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set Existing User": {
+      "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
+    },
+    "Set No Profile": {
+      "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Simple Memory": {
+      "ai_memory": [[{ "node": "AI Agent", "type": "ai_memory", "index": 0 }]]
+    },
+    "search_database": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "send_admin_notification1": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "get_user_policies": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "AI Agent": {
+      "main": [[{ "node": "Send WhatsApp Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "binaryMode": "separate" },
+  "tags": [],
+  "meta": { "templateCredsSetupCompleted": true }
+}
