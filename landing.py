@@ -30,209 +30,170 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ── GLOBAL STYLES ──────────────────────────────────────────────────────────────
+# ── STYLES ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap');
 
-/* Reset & base */
 *, html, body, [class*="css"] {
   font-family: 'Heebo', sans-serif !important;
   box-sizing: border-box;
 }
-html, body { margin: 0; padding: 0; }
 
-/* Hide Streamlit chrome */
-#MainMenu, header, footer { display: none !important; }
-.stDeployButton { display: none !important; }
-[data-testid="stToolbar"] { display: none !important; }
-[data-testid="stDecoration"] { display: none !important; }
-.stApp > header { display: none !important; }
-
-/* Remove default page padding */
-.main .block-container {
-  padding: 0 !important;
-  max-width: 100% !important;
+#MainMenu, header, footer, [data-testid="stToolbar"], [data-testid="stDecoration"] {
+  display: none !important;
 }
+.stApp > header { display: none !important; }
+.main .block-container { padding: 0 !important; max-width: 100% !important; }
 
-/* ── Split layout ── */
+/* Split layout */
 [data-testid="stHorizontalBlock"] {
   gap: 0 !important;
   align-items: stretch !important;
   min-height: 100vh;
 }
-
-/* Left panel – lavender */
 [data-testid="stHorizontalBlock"] > div:first-child {
-  background: #EEEEFF !important;
+  background: #F0FDF4 !important;
   min-height: 100vh !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 60px 48px !important;
+  padding: 64px 56px !important;
   direction: rtl;
+  position: relative;
+  overflow: hidden;
 }
-
-/* Right panel – white */
 [data-testid="stHorizontalBlock"] > div:last-child {
   background: white !important;
   min-height: 100vh !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 60px 48px !important;
+  padding: 64px 56px !important;
   direction: rtl;
-}
-
-/* Typography */
-.panel-tagline {
-  font-size: 2.4rem;
-  font-weight: 800;
-  color: #1a1a2e;
-  line-height: 1.35;
-  text-align: right;
-  direction: rtl;
-}
-.panel-tagline span { color: #3b4cca; }
-.panel-sub {
-  font-size: 1.05rem;
-  color: #555;
-  margin-top: 16px;
-  line-height: 1.6;
-  text-align: right;
-  direction: rtl;
-}
-.bullet-list {
-  list-style: none;
-  padding: 0;
-  margin-top: 28px;
-}
-.bullet-list li {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 14px;
-  font-size: 0.95rem;
-  color: #333;
-  direction: rtl;
-}
-.bullet-list li::before {
-  content: "✓";
-  color: #3b4cca;
-  font-weight: 700;
-  flex-shrink: 0;
+  align-items: center;
 }
 
-/* Form card */
+/* Hero side */
+.badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.85);
+  border: 1px solid rgba(22,179,100,0.15);
+  color: #16B364; font-weight: 600; font-size: 0.85rem;
+  padding: 6px 16px; border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  margin-bottom: 28px; direction: rtl;
+}
+.hero-title {
+  font-size: 3rem; font-weight: 900;
+  color: #111827; line-height: 1.25;
+  margin-bottom: 20px; direction: rtl;
+}
+.hero-title span { color: #16B364; }
+.hero-sub {
+  font-size: 1.1rem; color: #6B7280;
+  margin-bottom: 36px; line-height: 1.65;
+  max-width: 400px; direction: rtl;
+}
+.benefit-item {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 16px; direction: rtl;
+}
+.benefit-check {
+  flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(22,179,100,0.12);
+  display: flex; align-items: center; justify-content: center;
+  color: #16B364; font-size: 0.85rem; font-weight: 700;
+}
+.benefit-text { font-size: 1rem; font-weight: 500; color: #1F2937; }
+.privacy-note {
+  margin-top: 44px; font-size: 0.82rem; color: #9CA3AF; direction: rtl;
+}
+.circle-deco-1 {
+  position: absolute; width: 320px; height: 320px; border-radius: 50%;
+  background: rgba(22,179,100,0.05);
+  top: -80px; left: -80px; pointer-events: none;
+}
+.circle-deco-2 {
+  position: absolute; width: 200px; height: 200px; border-radius: 50%;
+  background: rgba(22,179,100,0.05);
+  bottom: 40px; right: 40px; pointer-events: none;
+}
+
+/* Form side */
 .form-logo {
-  font-size: 1.6rem;
-  font-weight: 800;
-  color: #3b4cca;
-  text-align: center;
-  margin-bottom: 28px;
-  letter-spacing: -0.5px;
+  display: flex; align-items: center; gap: 8px; justify-content: center;
+  margin-bottom: 8px;
 }
+.form-logo-text { font-size: 1.5rem; font-weight: 700; color: #16B364; }
 .form-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #1a1a2e;
-  text-align: center;
-  margin-bottom: 6px;
-  direction: rtl;
+  font-size: 1.5rem; font-weight: 700; color: #111827;
+  text-align: center; margin-bottom: 32px; direction: rtl;
 }
-.form-sub {
-  text-align: center;
-  color: #888;
-  font-size: 0.9rem;
-  margin-bottom: 28px;
-  direction: rtl;
+.success-wrap { text-align: center; padding: 40px 0; direction: rtl; }
+.success-icon { font-size: 3.5rem; margin-bottom: 16px; }
+.success-title { font-size: 1.4rem; font-weight: 700; color: #111827; margin-bottom: 8px; }
+.success-sub { color: #6B7280; font-size: 1rem; }
+.terms-note {
+  text-align: center; margin-top: 20px;
+  font-size: 0.78rem; color: #9CA3AF; direction: rtl;
 }
-.form-sub a { color: #3b4cca; text-decoration: none; }
+.terms-note a { color: #16B364; text-decoration: underline; }
 
-/* Input styling */
+/* Input overrides */
 .stTextInput > div > div > input {
-  background: #F5F6FF !important;
-  border: 1.5px solid #E0E3FF !important;
-  border-radius: 10px !important;
-  padding: 10px 14px !important;
-  direction: rtl !important;
-  text-align: right !important;
-  font-size: 0.95rem !important;
-  transition: border-color 0.2s;
+  background: rgba(240,253,244,0.6) !important;
+  border: 1.5px solid #E5E7EB !important;
+  border-radius: 12px !important;
+  height: 48px !important;
+  padding: 0 16px !important;
+  direction: rtl !important; text-align: right !important;
+  font-size: 0.95rem !important; color: #111827 !important;
+  transition: border-color 0.2s, box-shadow 0.2s !important;
 }
 .stTextInput > div > div > input:focus {
-  border-color: #3b4cca !important;
+  border-color: #16B364 !important;
+  box-shadow: 0 0 0 3px rgba(22,179,100,0.15) !important;
   background: white !important;
 }
+.stTextInput > div > div > input::placeholder { color: #9CA3AF !important; }
 label {
-  font-size: 0.85rem !important;
-  font-weight: 600 !important;
-  color: #444 !important;
-  direction: rtl !important;
-}
-
-/* Primary button */
-.stButton > button[kind="primary"] {
-  background: #3b4cca !important;
-  border: none !important;
-  border-radius: 50px !important;
-  font-size: 1rem !important;
-  font-weight: 700 !important;
-  padding: 0.7rem 0 !important;
-  width: 100% !important;
-  color: white !important;
-  cursor: pointer !important;
-  transition: background 0.2s, transform 0.1s !important;
-}
-.stButton > button[kind="primary"]:hover {
-  background: #2d3bb0 !important;
-  transform: translateY(-1px) !important;
-}
-
-/* Secondary/back button */
-.stButton > button:not([kind="primary"]) {
-  background: transparent !important;
-  border: none !important;
-  color: #3b4cca !important;
-  font-size: 0.9rem !important;
-  padding: 0 !important;
-  text-decoration: underline !important;
+  font-size: 0.875rem !important; font-weight: 500 !important;
+  color: #111827 !important; direction: rtl !important;
+  margin-bottom: 4px !important;
 }
 
 /* File uploader */
 [data-testid="stFileUploader"] {
-  background: #F5F6FF !important;
-  border: 1.5px dashed #C5CAFF !important;
-  border-radius: 10px !important;
-  direction: rtl !important;
+  background: rgba(240,253,244,0.4) !important;
+  border: 2px dashed #D1D5DB !important;
+  border-radius: 12px !important;
+}
+[data-testid="stFileUploader"]:hover {
+  background: rgba(240,253,244,0.7) !important;
+  border-color: #16B364 !important;
 }
 
-/* Divider */
-.custom-divider {
-  border: none;
-  border-top: 1px solid #EBEBEB;
-  margin: 20px 0;
+/* Primary button */
+.stButton > button[kind="primary"] {
+  background: #16B364 !important;
+  border: none !important;
+  border-radius: 999px !important;
+  height: 52px !important;
+  font-size: 1.05rem !important; font-weight: 700 !important;
+  color: white !important; width: 100% !important;
+  box-shadow: 0 4px 14px rgba(22,179,100,0.35) !important;
+  transition: all 0.2s !important;
+}
+.stButton > button[kind="primary"]:hover {
+  background: #12985A !important;
+  box-shadow: 0 6px 18px rgba(22,179,100,0.45) !important;
+  transform: translateY(-1px) !important;
 }
 
-/* Success */
-.success-wrap { text-align: center; direction: rtl; }
-.success-icon { font-size: 3.5rem; margin-bottom: 16px; }
-.success-title { font-size: 2rem; font-weight: 800; color: #1a1a2e; margin-bottom: 12px; }
-.success-text { font-size: 1rem; color: #555; line-height: 1.7; }
-.whatsapp-box {
-  background: #F5F6FF;
-  border: 1.5px solid #E0E3FF;
-  border-radius: 14px;
-  padding: 24px 20px;
-  margin-top: 24px;
-  text-align: right;
-  direction: rtl;
+/* Back button */
+.stButton > button:not([kind="primary"]) {
+  background: transparent !important; border: none !important;
+  color: #16B364 !important; font-size: 0.9rem !important;
+  padding: 0 !important; text-decoration: underline !important;
 }
-.whatsapp-box h4 { color: #3b4cca; font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
-.whatsapp-box p { color: #444; font-size: 0.9rem; line-height: 1.6; margin: 0; }
 
-/* Alerts */
-.stAlert { direction: rtl !important; text-align: right !important; border-radius: 10px !important; }
+.stAlert { direction: rtl !important; text-align: right !important; border-radius: 12px !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -241,6 +202,13 @@ label {
 for k, v in {"step": "form", "reg_name": "", "reg_phone": ""}.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+BENEFITS = [
+    "מבוסס על הפוליסה האישית שלך",
+    "תשובות מיידיות בעברית, ערבית ורוסית",
+    "כירופרקטיקה, MRI, פיזיותרפיה ועוד",
+    "ללא המתנה לנציג, 24/7",
+]
 
 
 # ── HELPERS ────────────────────────────────────────────────────────────────────
@@ -265,12 +233,10 @@ def _extract_annex_codes(text: str) -> list[str]:
     client = _claude()
     prompt = f"""זהו טקסט ממפרט ביטוח ישראלי. חלץ את כל קודי הנספחים (מספרים בני 4-6 ספרות).
 החזר JSON בלבד: {{"annex_codes": ["8713","6792"]}}
-
 טקסט:
 {text[:4000]}"""
     resp = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=256,
+        model="claude-sonnet-4-6", max_tokens=256,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = re.sub(r"```json|```", "", resp.content[0].text).strip()
@@ -293,18 +259,14 @@ def _validate_teudat_zehut(tz: str) -> bool:
 
 
 def _send_whatsapp_welcome(phone: str, name: str) -> bool:
-    """Send a welcome WhatsApp message via Green API."""
     instance = os.getenv("GREEN_API_INSTANCE")
     token = os.getenv("GREEN_API_TOKEN")
     if not instance or not token:
         return False
-
-    # Convert 05XXXXXXXX → 9725XXXXXXXX@c.us
     digits = re.sub(r"\D", "", phone)
     if digits.startswith("0"):
         digits = "972" + digits[1:]
     chat_id = f"{digits}@c.us"
-
     message = (
         f"שלום {name}! 👋\n\n"
         f"ברוכים הבאים ל-BituachBot 🛡️\n\n"
@@ -315,7 +277,6 @@ def _send_whatsapp_welcome(phone: str, name: str) -> bool:
         f"• \"מה הכיסוי לפיזיותרפיה?\"\n\n"
         f"מה תרצה לדעת? 😊"
     )
-
     url = f"https://api.green-api.com/waInstance{instance}/sendMessage/{token}"
     try:
         resp = requests.post(url, json={"chatId": chat_id, "message": message}, timeout=10)
@@ -324,46 +285,42 @@ def _send_whatsapp_welcome(phone: str, name: str) -> bool:
         return False
 
 
-# ── LEFT PANEL ─────────────────────────────────────────────────────────────────
-def _left_panel():
-    st.markdown("""
-<div>
-  <div class="panel-tagline">
-    עם <span>BituachBot</span><br>
-    תבין סוף סוף<br>
-    מה הביטוח שלך מכסה
-  </div>
-  <p class="panel-sub">שאל שאלות על הכיסוי שלך בוואטסאפ — ותקבל תשובה מדויקת לפי הנספחים שלך.</p>
-  <ul class="bullet-list">
-    <li>מבוסס על הפוליסה האישית שלך</li>
-    <li>תשובות מיידיות בעברית, ערבית ורוסית</li>
-    <li>כירופרקטיקה, MRI, פיזיותרפיה ועוד</li>
-    <li>ללא המתנה לנציג, 24/7</li>
-  </ul>
-</div>
+# ── LEFT PANEL (hero) ──────────────────────────────────────────────────────────
+def _hero():
+    bullets_html = "".join(
+        f'<div class="benefit-item">'
+        f'<span class="benefit-check">✓</span>'
+        f'<span class="benefit-text">{b}</span>'
+        f'</div>'
+        for b in BENEFITS
+    )
+    st.markdown(f"""
+<div class="circle-deco-1"></div>
+<div class="circle-deco-2"></div>
+<div class="badge">💬 אסיסטנט ביטוח חכם בוואטסאפ</div>
+<h1 class="hero-title">עם <span>BituachBot</span><br>תבין סוף סוף מה<br>הביטוח שלך מכסה</h1>
+<p class="hero-sub">שלח הודעה בוואטסאפ וקבל תשובה מדויקת — לפי הביטוח האישי שלך.</p>
+{bullets_html}
+<p class="privacy-note">🔒 המידע שלך מאובטח ומוגן לפי תקנות הפרטיות</p>
 """, unsafe_allow_html=True)
 
 
-# ── REGISTRATION FORM ──────────────────────────────────────────────────────────
+# ── PAGES ──────────────────────────────────────────────────────────────────────
 def page_form():
     left, right = st.columns([1, 1])
 
     with left:
-        _left_panel()
+        _hero()
 
     with right:
-        st.markdown('<div class="form-logo">🛡️ BituachBot</div>', unsafe_allow_html=True)
-        st.markdown('<div class="form-title">הירשמו! זה מהיר וקל :)</div>', unsafe_allow_html=True)
-        st.markdown('<div class="form-sub">כבר רשומים? <a href="#">להתחברות</a></div>', unsafe_allow_html=True)
+        st.markdown('<div class="form-logo"><span style="font-size:2rem">🛡️</span><span class="form-logo-text">BituachBot</span></div>', unsafe_allow_html=True)
+        st.markdown('<div class="form-title">רשום פשוט ומהיר</div>', unsafe_allow_html=True)
 
-        full_name = st.text_input("שם מלא", placeholder="ישראל ישראלי", key="f_name")
-        phone = st.text_input("טלפון נייד", placeholder="0501234567", key="f_phone")
-        teudat_zehut = st.text_input("תעודת זהות", placeholder="9 ספרות", max_chars=9, key="f_tz")
+        full_name = st.text_input("שם מלא", placeholder="ישראל ישראלי")
+        phone = st.text_input("טלפון נייד", placeholder="050-1234567")
+        teudat_zehut = st.text_input("תעודת זהות", placeholder="123456789", max_chars=9)
 
-        st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
-        st.markdown("<small style='color:#888;direction:rtl;'>**העלאת מפרט ביטוח** — רשות (ניתן לשלוח מאוחר יותר)</small>", unsafe_allow_html=True)
-
-        uploaded = st.file_uploader("בחר קובץ PDF", type=["pdf"], key="f_pdf", label_visibility="collapsed")
+        uploaded = st.file_uploader("העלאת קובץ PDF (רשות)", type=["pdf"])
 
         annex_codes: list[str] = []
         if uploaded and PDF_SUPPORT:
@@ -374,8 +331,6 @@ def page_form():
                     annex_codes = _extract_annex_codes(pdf_text)
                 if annex_codes:
                     st.success(f"זוהו {len(annex_codes)} נספחים: {' · '.join(annex_codes)}")
-                else:
-                    st.warning("לא זוהו קודי נספחים.")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -383,14 +338,12 @@ def page_form():
             errors = []
             clean_phone = phone.strip().replace("-", "").replace(" ", "")
             clean_tz = teudat_zehut.strip()
-
             if not full_name.strip():
                 errors.append("נא להזין שם מלא.")
             if not re.match(r"^05\d{8}$", clean_phone):
                 errors.append("מספר טלפון לא תקין (חייב להתחיל ב-05 ולהיות בן 10 ספרות).")
             if not _validate_teudat_zehut(clean_tz):
                 errors.append("תעודת זהות לא תקינה.")
-
             if errors:
                 for e in errors:
                     st.error(e)
@@ -410,40 +363,28 @@ def page_form():
                     st.error(msg)
 
         st.markdown(
-            "<p style='text-align:center;font-size:0.75rem;color:#aaa;margin-top:16px;direction:rtl;'>"
-            "בלחיצה על הכפתור אתה מאשר את <a href='#' style='color:#3b4cca;'>תנאי השימוש</a> ו<a href='#' style='color:#3b4cca;'>מדיניות הפרטיות</a>"
-            "</p>",
+            '<p class="terms-note">בהרשמה אני מסכימ/ה ל<a href="#">תנאי השימוש</a> ול<a href="#">מדיניות הפרטיות</a></p>',
             unsafe_allow_html=True,
         )
 
 
-# ── SUCCESS PAGE ───────────────────────────────────────────────────────────────
 def page_success():
     left, right = st.columns([1, 1])
 
     with left:
-        _left_panel()
+        _hero()
 
     with right:
-        st.markdown('<div class="form-logo">🛡️ BituachBot</div>', unsafe_allow_html=True)
-
-        name = st.session_state.reg_name
+        st.markdown('<div class="form-logo"><span style="font-size:2rem">🛡️</span><span class="form-logo-text">BituachBot</span></div>', unsafe_allow_html=True)
         st.markdown(f"""
 <div class="success-wrap">
   <div class="success-icon">🎉</div>
-  <div class="success-title">ברוכים הבאים, {name}!</div>
-  <div class="success-text">הרישום הושלם בהצלחה.<br>עכשיו אפשר להתחיל לשאול שאלות על הכיסוי שלך.</div>
-  <div class="whatsapp-box">
-    <h4>📱 השלב הבא — וואטסאפ</h4>
-    <p>שמור את מספר הבוט ושלח הודעה:<br>
-    <strong>"שלום, רוצה לדעת מה הכיסוי שלי"</strong><br><br>
-    הבוט יזהה אותך לפי הטלפון שמסרת ויענה לפי הנספחים שלך.</p>
-  </div>
+  <div class="success-title">נרשמת בהצלחה, {st.session_state.reg_name}!</div>
+  <div class="success-sub">נשלח לך הודעה בוואטסאפ בקרוב 📱</div>
 </div>
 """, unsafe_allow_html=True)
-
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("← חזרה לדף הרישום"):
+        if st.button("← חזרה"):
             st.session_state.step = "form"
             st.rerun()
 
