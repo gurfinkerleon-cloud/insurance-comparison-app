@@ -8,6 +8,7 @@ import json
 import os
 import re
 
+import requests
 import streamlit as st
 from anthropic import Anthropic
 from dotenv import load_dotenv
@@ -291,6 +292,38 @@ def _validate_teudat_zehut(tz: str) -> bool:
     return total % 10 == 0
 
 
+def _send_whatsapp_welcome(phone: str, name: str) -> bool:
+    """Send a welcome WhatsApp message via Green API."""
+    instance = os.getenv("GREEN_API_INSTANCE")
+    token = os.getenv("GREEN_API_TOKEN")
+    if not instance or not token:
+        return False
+
+    # Convert 05XXXXXXXX → 9725XXXXXXXX@c.us
+    digits = re.sub(r"\D", "", phone)
+    if digits.startswith("0"):
+        digits = "972" + digits[1:]
+    chat_id = f"{digits}@c.us"
+
+    message = (
+        f"שלום {name}! 👋\n\n"
+        f"ברוכים הבאים ל-BituachBot 🛡️\n\n"
+        f"אני כאן כדי לעזור לך להבין בדיוק מה הביטוח שלך מכסה.\n\n"
+        f"פשוט שלח לי שאלה — לדוגמה:\n"
+        f"• \"יש לי כיסוי לכירופרקטיקה?\"\n"
+        f"• \"כמה ההשתתפות העצמית ב-MRI?\"\n"
+        f"• \"מה הכיסוי לפיזיותרפיה?\"\n\n"
+        f"מה תרצה לדעת? 😊"
+    )
+
+    url = f"https://api.green-api.com/waInstance{instance}/sendMessage/{token}"
+    try:
+        resp = requests.post(url, json={"chatId": chat_id, "message": message}, timeout=10)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 # ── LEFT PANEL ─────────────────────────────────────────────────────────────────
 def _left_panel():
     st.markdown("""
@@ -370,6 +403,7 @@ def page_form():
                 if ok:
                     st.session_state.reg_name = full_name.strip()
                     st.session_state.reg_phone = clean_phone
+                    _send_whatsapp_welcome(clean_phone, full_name.strip())
                     st.session_state.step = "success"
                     st.rerun()
                 else:
