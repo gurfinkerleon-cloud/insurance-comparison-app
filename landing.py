@@ -40,6 +40,16 @@ st.markdown("""
   background: white !important; min-height: 100vh !important;
   padding: 48px 56px !important; direction: rtl;
 }
+/* Global RTL for all text in right panel */
+[data-testid="stHorizontalBlock"] > div:last-child p,
+[data-testid="stHorizontalBlock"] > div:last-child h1,
+[data-testid="stHorizontalBlock"] > div:last-child h2,
+[data-testid="stHorizontalBlock"] > div:last-child h3,
+[data-testid="stHorizontalBlock"] > div:last-child label,
+[data-testid="stHorizontalBlock"] > div:last-child span,
+[data-testid="stHorizontalBlock"] > div:last-child div {
+  text-align: right !important; direction: rtl !important;
+}
 .badge {
   display: inline-flex; align-items: center; gap: 8px;
   background: rgba(255,255,255,0.85); border: 1px solid rgba(22,179,100,0.15);
@@ -67,20 +77,27 @@ st.markdown("""
 }
 .form-logo { display: flex; align-items: center; gap: 8px; justify-content: center; margin-bottom: 8px; }
 .form-logo-text { font-size: 1.5rem; font-weight: 700; color: #16B364; }
-.form-title { font-size: 1.5rem; font-weight: 700; color: #111827; text-align: center; margin-bottom: 24px; }
-.form-sub { font-size: 0.9rem; color: #6B7280; text-align: center; margin-bottom: 28px; }
+.form-title { font-size: 1.5rem; font-weight: 700; color: #111827; text-align: center !important; margin-bottom: 24px; }
+.form-sub { font-size: 0.9rem; color: #6B7280; text-align: center !important; margin-bottom: 28px; }
+.section-title {
+  font-size: 1rem; font-weight: 700; color: #111827;
+  text-align: right !important; direction: rtl !important;
+  margin-bottom: 12px; padding-bottom: 8px;
+  border-bottom: 2px solid #F0FDF4;
+}
 .policy-card {
   background: #F0FDF4; border: 1px solid #D1FAE5; border-radius: 12px;
-  padding: 14px 18px; margin-bottom: 10px; direction: rtl;
+  padding: 14px 18px; margin-bottom: 10px; direction: rtl; text-align: right;
 }
-.policy-card .annex-code { font-size: 0.8rem; color: #16B364; font-weight: 700; }
-.policy-card .annex-name { font-size: 1rem; font-weight: 600; color: #111827; }
-.policy-card .company-name { font-size: 0.85rem; color: #6B7280; }
+.policy-card .annex-code { font-size: 0.8rem; color: #16B364; font-weight: 700; text-align: right; }
+.policy-card .annex-name { font-size: 1rem; font-weight: 600; color: #111827; text-align: right; }
+.policy-card .company-name { font-size: 0.85rem; color: #6B7280; text-align: right; }
 .profile-box {
   background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px;
-  padding: 16px 20px; margin-bottom: 24px; direction: rtl;
+  padding: 16px 20px; margin-bottom: 24px; direction: rtl; text-align: right;
 }
-.otp-hint { text-align: center; color: #6B7280; font-size: 0.9rem; margin-bottom: 20px; }
+.profile-box div { text-align: right !important; direction: rtl !important; }
+.otp-hint { text-align: center !important; color: #6B7280; font-size: 0.9rem; margin-bottom: 20px; }
 .stTextInput > div > div > input {
   background: rgba(240,253,244,0.6) !important; border: 1.5px solid #E5E7EB !important;
   border-radius: 12px !important; height: 48px !important; padding: 0 16px !important;
@@ -90,10 +107,12 @@ st.markdown("""
 .stTextInput > div > div > input:focus {
   border-color: #16B364 !important; box-shadow: 0 0 0 3px rgba(22,179,100,0.15) !important;
 }
-label { font-size: 0.875rem !important; font-weight: 500 !important; color: #111827 !important; direction: rtl !important; }
+label { font-size: 0.875rem !important; font-weight: 500 !important; color: #111827 !important;
+  direction: rtl !important; text-align: right !important; display: block !important; }
 [data-testid="stFileUploader"] {
   background: rgba(240,253,244,0.4) !important; border: 2px dashed #D1D5DB !important; border-radius: 12px !important;
 }
+[data-testid="stFileUploader"] > div { direction: rtl !important; text-align: right !important; }
 .stButton > button[kind="primary"] {
   background: #16B364 !important; border: none !important; border-radius: 999px !important;
   height: 52px !important; font-size: 1.05rem !important; font-weight: 700 !important;
@@ -106,6 +125,7 @@ label { font-size: 0.875rem !important; font-weight: 500 !important; color: #111
   color: #16B364 !important; font-size: 0.9rem !important; text-decoration: underline !important;
 }
 .stAlert { direction: rtl !important; text-align: right !important; border-radius: 12px !important; }
+.stAlert > div { direction: rtl !important; text-align: right !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -394,7 +414,7 @@ def page_dashboard():
 
         policies = _db().get_user_policies(st.session_state.reg_user_id)
         if policies:
-            st.markdown(f"**הנספחים שלך ({len(policies)})**")
+            st.markdown(f'<div class="section-title">הנספחים שלך ({len(policies)})</div>', unsafe_allow_html=True)
             for p in policies:
                 annex = p.get("master_annexes") or {}
                 company = (annex.get("insurance_companies") or {}).get("name", "")
