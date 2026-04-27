@@ -28,7 +28,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body || $json;\n\nconst typeWebhook = body.typeWebhook || '';\nif (!['incomingMessageReceived'].includes(typeWebhook)) {\n  return [{ json: { skip: true } }];\n}\n\nconst chatId = body.senderData?.chatId || '';\nconst senderName = body.senderData?.senderName || '';\nconst typeMessage = body.messageData?.typeMessage || '';\n\nlet chatInput = '';\nif (typeMessage === 'textMessage') {\n  chatInput = body.messageData?.textMessageData?.textMessage || '';\n} else if (typeMessage === 'extendedTextMessage') {\n  chatInput = body.messageData?.extendedTextMessageData?.text || '';\n}\n\nconst wid = chatId.replace('@c.us', '');\nlet phone = wid.startsWith('972') ? '0' + wid.slice(3) : wid;\n\nconst hasFile = ['documentMessage', 'imageMessage'].includes(typeMessage);\nconst fileUrl = hasFile ? (body.messageData?.fileMessageData?.downloadUrl || '') : '';\nconst fileName = hasFile ? (body.messageData?.fileMessageData?.fileName || 'file.pdf') : '';\n\nreturn [{\n  json: {\n    chatId,\n    chatInput,\n    phone_number: phone,\n    phone_is_valid: /^05\\d{8}$/.test(phone),\n    has_pdf: hasFile && fileUrl !== '',\n    file_url: fileUrl,\n    file_name: fileName,\n    sender_name: senderName,\n    skip: false\n  }\n}];"
+        "jsCode": "const body = $json.body || $json;\n\nconst typeWebhook = body.typeWebhook || '';\nif (typeWebhook !== 'incomingMessageReceived') {\n  return [];\n}\n\nconst chatId = body.senderData?.chatId || '';\nconst senderName = body.senderData?.senderName || '';\nconst typeMessage = body.messageData?.typeMessage || '';\n\nlet chatInput = '';\nif (typeMessage === 'textMessage') {\n  chatInput = body.messageData?.textMessageData?.textMessage || '';\n} else if (typeMessage === 'extendedTextMessage') {\n  chatInput = body.messageData?.extendedTextMessageData?.text || '';\n}\n\nconst wid = chatId.replace('@c.us', '');\nlet phone = wid.startsWith('972') ? '0' + wid.slice(3) : wid;\n\nconst hasFile = ['documentMessage', 'imageMessage'].includes(typeMessage);\nconst fileUrl = hasFile ? (body.messageData?.fileMessageData?.downloadUrl || '') : '';\nconst fileName = hasFile ? (body.messageData?.fileMessageData?.fileName || 'file.pdf') : '';\n\nreturn [{\n  json: {\n    chatId,\n    chatInput,\n    phone_number: phone,\n    phone_is_valid: /^05\\d{8}$/.test(phone),\n    has_pdf: hasFile && fileUrl !== '',\n    file_url: fileUrl,\n    file_name: fileName,\n    sender_name: senderName\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -445,7 +445,7 @@
     {
       "parameters": {
         "sessionIdType": "customKey",
-        "sessionKey": "={{ $('Parse WhatsApp Input').first().json.phone_number }}"
+        "sessionKey": "={{ $('Parse WhatsApp Input').first().json.phone_number || $('Parse WhatsApp Input').first().json.chatId }}"
       },
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.3,
