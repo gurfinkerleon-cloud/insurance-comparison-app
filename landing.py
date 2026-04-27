@@ -558,6 +558,30 @@ def page_admin():
                         st.rerun()
 
     st.markdown("---")
+    st.markdown("### לקוחות ללא פוליסה")
+    if st.button("🔄 רענן רשימה"):
+        st.rerun()
+
+    pending_clients = _db().get_profiles_without_policies()
+    if not pending_clients:
+        st.success("✅ כל הלקוחות כבר מקושרים לפוליסה")
+    else:
+        st.warning(f"⚠️ {len(pending_clients)} לקוחות ללא פוליסה")
+        for c in pending_clients:
+            created = c.get("created_at", "")[:10]
+            col_a, col_b = st.columns([3, 1])
+            with col_a:
+                st.markdown(
+                    f"**{c.get('full_name','')}** — {c.get('phone_number','')} "
+                    f"<span style='color:#9CA3AF;font-size:0.82rem'>(נרשם {created})</span>",
+                    unsafe_allow_html=True,
+                )
+            with col_b:
+                if st.button("העלה פוליסה", key=f"sel_{c['id']}"):
+                    st.session_state.admin_client = c
+                    st.rerun()
+
+    st.markdown("---")
     if st.button("← יציאה מממשק הניהול"):
         st.session_state.admin_authed = False
         st.session_state.admin_client = None

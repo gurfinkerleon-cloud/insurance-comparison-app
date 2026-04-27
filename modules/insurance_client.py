@@ -101,6 +101,28 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] register_user_with_policies: {e}")
             return False, f"שגיאה: {str(e)}"
 
+    def get_profiles_without_policies(self) -> list[dict]:
+        """Returns all profiles that have no linked user_policies."""
+        try:
+            all_profiles = self.client.table("profiles").select("id, phone_number, full_name, created_at").execute()
+            if not all_profiles.data:
+                return []
+            result = []
+            for profile in all_profiles.data:
+                policies = (
+                    self.client.table("user_policies")
+                    .select("id")
+                    .eq("user_id", profile["id"])
+                    .limit(1)
+                    .execute()
+                )
+                if not policies.data:
+                    result.append(profile)
+            return result
+        except Exception as e:
+            print(f"[InsuranceClientDB] get_profiles_without_policies: {e}")
+            return []
+
     def link_annex_codes(self, user_id: str, annex_codes: list[str]) -> tuple[int, list[str]]:
         """
         Link annex codes to an existing user profile.
