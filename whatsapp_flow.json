@@ -414,7 +414,7 @@
         "promptType": "define",
         "text": "={{ $('Parse WhatsApp Input').first().json.chatInput }}\n\n---\nSystem Info:\nPhone: {{ $('Parse WhatsApp Input').first().json.phone_number }}\nHas PDF: {{ $('Parse WhatsApp Input').first().json.has_pdf ? 'YES' : 'NO' }}\nUser Status: {{ $json.user_status || 'UNKNOWN' }}\n{{ $json.client_name ? 'Client Name: ' + $json.client_name : '' }}\n{{ $json.user_id ? 'User ID: ' + $json.user_id : '' }}\n{{ $json.codes_count !== undefined ? 'Codes Found: ' + $json.codes_count : '' }}",
         "options": {
-          "systemMessage": "אתה מומחה בכיר לביטוח בריאות בישראל.\n\nכלל עליון: אל תחזיר לעולם נתוני JSON גולמיים. תמיד השב בעברית טבעית.\n\nUser Status = existing:\n✅ ברך את הלקוח בשמו (Client Name) בפעם הראשונה בלבד.\nכשהלקוח שואל שאלה על כיסוי ביטוחי:\n1. קרא get_user_policies — סנן לפי user_id מה-System Info.\n2. אם get_user_policies מחזיר 0 תוצאות עבור ה-user_id הזה: הפוליסה עדיין לא הועלתה. השב בדיוק: \"הרישום שלך התקבל בהצלחה! 🎉\\n\\nאנחנו עדיין מעבדים את הפוליסה שלך.\\nאחד מהנציגים שלנו ייצור איתך קשר בקרוב כדי לסיים את ההגדרה. 🙏\\n\\nתודה על הסבלנות!\" ואל תפעיל שום כלים נוספים.\n3. לכל annex_id שמוחזר: קרא search_database ומצא את הנספח.\n4. העתק את תוכן ה-full_text במדויק — כולל מחירים, ספקים, השתתפות עצמית.\n5. אם לא מכוסה — הפעל send_admin_notification1.\n\nUser Status = NEW_REGISTERED:\n✅ ברך את הלקוח, ציין כמה נספחים נשמרו (Codes Found), שאל במה לעזור.\nאם Codes Found = 0: הפעל send_admin_notification1.\n\nUser Status = no_profile:\nאמר: 'לא מצאתי אותך במערכת. שלח/י הודעה עם הטלפון + PDF הפוליסה מצורף'\n\nUser Status = UNKNOWN:\nבקש מספר טלפון תקין בן 10 ספרות המתחיל ב-05.\n\nשפה: עברית רהוטה. אל תמציא נתונים כספיים."
+          "systemMessage": "אתה מומחה בכיר לביטוח בריאות בישראל. השב תמיד בעברית טבעית, ללא JSON גולמי.\n\nUser Status = existing:\nכשהלקוח שואל שאלה:\n1. קרא get_user_policies עם user_id מה-System Info.\n2. אם מוחזר 0 תוצאות — השב: \"הרישום שלך התקבל! 🎉 אנחנו עדיין מעבדים את הפוליסה שלך, ניצור איתך קשר בקרוב. 🙏\" ועצור.\n3. לכל annex_id שקיבלת: קרא search_database עם ה-annex_code המתאים (קרא כלי אחד בכל פעם).\n4. ענה לפי ה-full_text — מחירים, כיסויים, השתתפות עצמית. אל תמציא נתונים.\n5. אם השירות לא מכוסה בשום נספח — הפעל send_admin_notification1.\n\nUser Status = NEW_REGISTERED:\nברך, ציין כמה נספחים נשמרו (Codes Found), שאל במה לעזור.\nאם Codes Found = 0: הפעל send_admin_notification1.\n\nUser Status = no_profile:\nאמר: 'לא מצאתי אותך במערכת. שלח/י הודעה עם הטלפון + PDF הפוליסה מצורף.'\n\nUser Status = UNKNOWN:\nבקש מספר טלפון תקין בן 10 ספרות המתחיל ב-05.\n\nחשוב: קרא כלי אחד בכל פעם. אל תקרא search_database ללא annex_code ספציפי."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -428,8 +428,8 @@
         "model": {
           "__rl": true,
           "mode": "list",
-          "value": "claude-sonnet-4-5-20250929",
-          "cachedResultName": "Claude Sonnet 4.5"
+          "value": "claude-haiku-4-5-20251001",
+          "cachedResultName": "Claude Haiku 4.5"
         },
         "options": {}
       },
@@ -456,11 +456,22 @@
     {
       "parameters": {
         "descriptionType": "manual",
-        "toolDescription": "כלי לשליפת פרטים מלאים, השתתפויות עצמיות וזמני המתנה של נספחים מהספרייה המרכזית.",
+        "toolDescription": "כלי לשליפת פרטים מלאים של נספח ספציפי לפי annex_code. העבר את קוד הנספח (4-6 ספרות) כפרמטר annex_code.",
         "operation": "getAll",
         "tableId": "master_annexes",
-        "returnAll": true,
-        "filterType": "none"
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "annex_code",
+              "condition": "eq",
+              "keyValue": "={{ $fromAI('annex_code', 'קוד הנספח לחיפוש, למשל 8713') }}"
+            }
+          ]
+        }
       },
       "type": "n8n-nodes-base.supabaseTool",
       "typeVersion": 1,
@@ -493,11 +504,21 @@
     {
       "parameters": {
         "descriptionType": "manual",
-        "toolDescription": "כלי לשליפת רשימת הנספחים של לקוח. מחזיר שורות עם user_id ו-annex_id.",
+        "toolDescription": "כלי לשליפת רשימת קודי הנספחים של לקוח לפי user_id. מחזיר את רשימת ה-annex_id של הלקוח בלבד.",
         "operation": "getAll",
         "tableId": "user_policies",
         "returnAll": true,
-        "filterType": "none"
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "user_id",
+              "condition": "eq",
+              "keyValue": "={{ $fromAI('user_id', 'מזהה המשתמש מה-System Info') }}"
+            }
+          ]
+        }
       },
       "type": "n8n-nodes-base.supabaseTool",
       "typeVersion": 1,
