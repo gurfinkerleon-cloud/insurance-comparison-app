@@ -5,7 +5,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "bituachbot-whatsapp",
-        "responseMode": "responseNode",
+        "responseMode": "onReceived",
         "options": {}
       },
       "type": "n8n-nodes-base.webhook",
@@ -531,7 +531,6 @@
   "connections": {
     "WhatsApp Webhook": {
       "main": [
-        [{ "node": "ACK Green API", "type": "main", "index": 0 }],
         [{ "node": "Parse WhatsApp Input", "type": "main", "index": 0 }]
       ]
     },
