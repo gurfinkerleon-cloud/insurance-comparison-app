@@ -101,6 +101,48 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] register_user_with_policies: {e}")
             return False, f"שגיאה: {str(e)}"
 
+    def link_annex_codes(self, user_id: str, annex_codes: list[str]) -> tuple[int, list[str]]:
+        """
+        Link annex codes to an existing user profile.
+        Skips codes already linked.
+        Returns (linked_count, skipped_codes).
+        """
+        linked = 0
+        skipped: list[str] = []
+        for code in annex_codes:
+            try:
+                annex = (
+                    self.client.table("master_annexes")
+                    .select("id")
+                    .eq("annex_code", code)
+                    .limit(1)
+                    .execute()
+                )
+                if not annex.data:
+                    skipped.append(code)
+                    continue
+                annex_id = annex.data[0]["id"]
+                # Check if already linked
+                existing = (
+                    self.client.table("user_policies")
+                    .select("id")
+                    .eq("user_id", user_id)
+                    .eq("annex_id", annex_id)
+                    .limit(1)
+                    .execute()
+                )
+                if existing.data:
+                    skipped.append(code)
+                    continue
+                self.client.table("user_policies").insert(
+                    {"user_id": user_id, "annex_id": annex_id}
+                ).execute()
+                linked += 1
+            except Exception as e:
+                print(f"[InsuranceClientDB] link_annex_codes {code}: {e}")
+                skipped.append(code)
+        return linked, skipped
+
     # ── POLICIES ──────────────────────────────────────────────────────────────
 
     def get_user_policies(self, user_id: str) -> list[dict]:

@@ -115,6 +115,8 @@ defaults = {
     "reg_name": "", "reg_phone": "", "reg_user_id": "",
     "annex_count": 0,
     "_otp": "", "_otp_exp": None,
+    "admin_authed": False,
+    "admin_client": None,  # dict with profile data of selected client
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -445,18 +447,139 @@ def page_login():
             st.rerun()
 
 
-# ── ROUTER ─────────────────────────────────────────────────────────────────────
-step = st.session_state.step
+# ── ADMIN PAGE ─────────────────────────────────────────────────────────────────
 
-if step == "verify_new":
-    page_verify(is_new=True)
-elif step == "verify_login":
-    page_verify(is_new=False)
-elif step == "pending":
-    page_pending()
-elif step == "dashboard":
-    page_dashboard()
-elif step == "login":
-    page_login()
+def page_admin():
+    st.markdown("""
+<style>
+.admin-header {
+  background: #1F2937; color: white; padding: 16px 24px; border-radius: 12px;
+  font-size: 1.1rem; font-weight: 700; margin-bottom: 24px; direction: rtl;
+  display: flex; align-items: center; gap: 10px;
+}
+.client-card {
+  background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px;
+  padding: 16px 20px; margin-bottom: 16px; direction: rtl;
+}
+</style>
+""", unsafe_allow_html=True)
+
+    st.markdown('<div class="admin-header">🔐 BituachBot — ממשק ניהול</div>', unsafe_allow_html=True)
+
+    admin_password = _get_secret("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
+
+    if not st.session_state.admin_authed:
+        st.markdown("**סיסמת מנהל**")
+        pwd = st.text_input("סיסמה", type="password", placeholder="הכנס סיסמה")
+        if st.button("כניסה", type="primary"):
+            if admin_password and pwd == admin_password:
+                st.session_state.admin_authed = True
+                st.rerun()
+            else:
+                st.error("סיסמה שגויה")
+        return
+
+    st.success("✅ מחובר כמנהל")
+
+    st.markdown("---")
+    st.markdown("### העלאת פוליסה עבור לקוח קיים")
+
+    phone_input = st.text_input("חפש לקוח לפי טלפון", placeholder="0501234567")
+    if st.button("חפש לקוח"):
+        clean = phone_input.strip().replace("-", "").replace(" ", "")
+        if not re.match(r"^05\d{8}$", clean):
+            st.error("מספר טלפון לא תקין")
+        else:
+            profile = _db().get_profile_by_phone(clean)
+            if not profile:
+                st.error(f"לקוח עם מספר {clean} לא נמצא במערכת")
+                st.session_state.admin_client = None
+            else:
+                st.session_state.admin_client = profile
+                st.rerun()
+
+    client = st.session_state.admin_client
+    if client:
+        st.markdown(f"""
+<div class="client-card">
+  <div style="font-weight:700;font-size:1rem;margin-bottom:8px">פרטי לקוח</div>
+  <div style="color:#374151;font-size:0.92rem;line-height:1.9">
+    👤 <strong>{client.get('full_name','')}</strong><br>
+    📱 {client.get('phone_number','')}<br>
+    🆔 {client.get('teudat_zehut','—')}<br>
+    🔑 ID: <code style="font-size:0.78rem">{client.get('id','')}</code>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+        existing = _db().get_user_policies(client["id"])
+        if existing:
+            st.markdown(f"**נספחים קיימים ({len(existing)})**")
+            for p in existing:
+                annex = p.get("master_annexes") or {}
+                st.markdown(
+                    f"- נספח **{annex.get('annex_code','')}** — {annex.get('annex_name','')}",
+                )
+
+        st.markdown("---")
+        st.markdown("#### העלה PDF של הפוליסה")
+        pdf_file = st.file_uploader("בחר קובץ PDF", type=["pdf"], key="admin_pdf")
+
+        if pdf_file:
+            with st.spinner("מנתח PDF..."):
+                pdf_text = _extract_pdf_text(pdf_file.read())
+
+            if not pdf_text.strip():
+                st.error("לא ניתן לקרוא טקסט מהקובץ. ייתכן שהוא סרוק — נסה קובץ אחר.")
+            else:
+                with st.spinner("מזהה נספחים בעזרת AI..."):
+                    annex_codes = _extract_annex_codes(pdf_text)
+
+                if not annex_codes:
+                    st.warning("לא זוהו קודי נספחים בקובץ.")
+                else:
+                    st.info(f"זוהו {len(annex_codes)} נספחים: **{' · '.join(annex_codes)}**")
+
+                    if st.button("✅ קשר נספחים ללקוח", type="primary"):
+                        linked, skipped = _db().link_annex_codes(client["id"], annex_codes)
+                        if linked > 0:
+                            st.success(f"✅ קושרו {linked} נספחים חדשים בהצלחה!")
+                            _db().send_ready(
+                                client["phone_number"],
+                                client["full_name"],
+                                linked,
+                            )
+                            st.info("📱 נשלחה הודעת WhatsApp ללקוח")
+                        else:
+                            st.warning("לא נוספו נספחים חדשים (ייתכן שכולם כבר קיימים או לא נמצאו ב-master_annexes)")
+                        if skipped:
+                            st.caption(f"נספחים שדולגו (לא נמצאו ב-master_annexes): {', '.join(skipped)}")
+                        st.session_state.admin_client = None
+                        st.rerun()
+
+    st.markdown("---")
+    if st.button("← יציאה מממשק הניהול"):
+        st.session_state.admin_authed = False
+        st.session_state.admin_client = None
+        st.query_params.clear()
+        st.rerun()
+
+
+# ── ROUTER ─────────────────────────────────────────────────────────────────────
+_params = st.query_params
+if _params.get("admin") == "1":
+    page_admin()
 else:
-    page_form()
+    step = st.session_state.step
+    if step == "verify_new":
+        page_verify(is_new=True)
+    elif step == "verify_login":
+        page_verify(is_new=False)
+    elif step == "pending":
+        page_pending()
+    elif step == "dashboard":
+        page_dashboard()
+    elif step == "login":
+        page_login()
+    else:
+        page_form()
