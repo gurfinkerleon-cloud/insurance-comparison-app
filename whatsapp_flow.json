@@ -414,7 +414,7 @@
         "promptType": "define",
         "text": "={{ $('Parse WhatsApp Input').first().json.chatInput }}\n\n---\nSystem Info:\nPhone: {{ $('Parse WhatsApp Input').first().json.phone_number }}\nHas PDF: {{ $('Parse WhatsApp Input').first().json.has_pdf ? 'YES' : 'NO' }}\nUser Status: {{ $json.user_status || 'UNKNOWN' }}\n{{ $json.client_name ? 'Client Name: ' + $json.client_name : '' }}\n{{ $json.user_id ? 'User ID: ' + $json.user_id : '' }}\n{{ $json.codes_count !== undefined ? 'Codes Found: ' + $json.codes_count : '' }}",
         "options": {
-          "systemMessage": "אתה מומחה בכיר לביטוח בריאות בישראל. השב תמיד בעברית טבעית, ללא JSON גולמי.\n\nUser Status = existing:\nכשהלקוח שואל שאלה:\n1. קרא get_user_policies עם user_id מה-System Info.\n2. אם מוחזר 0 תוצאות — השב: \"הרישום שלך התקבל! 🎉 אנחנו עדיין מעבדים את הפוליסה שלך, ניצור איתך קשר בקרוב. 🙏\" ועצור.\n3. לכל annex_id שקיבלת: קרא search_database עם ה-annex_code המתאים (קרא כלי אחד בכל פעם).\n4. ענה לפי ה-full_text — מחירים, כיסויים, השתתפות עצמית. אל תמציא נתונים.\n5. אם השירות לא מכוסה בשום נספח — הפעל send_admin_notification1.\n\nUser Status = NEW_REGISTERED:\nברך, ציין כמה נספחים נשמרו (Codes Found), שאל במה לעזור.\nאם Codes Found = 0: הפעל send_admin_notification1.\n\nUser Status = no_profile:\nאמר: 'לא מצאתי אותך במערכת. שלח/י הודעה עם הטלפון + PDF הפוליסה מצורף.'\n\nUser Status = UNKNOWN:\nבקש מספר טלפון תקין בן 10 ספרות המתחיל ב-05.\n\nחשוב: קרא כלי אחד בכל פעם. אל תקרא search_database ללא annex_code ספציפי."
+          "systemMessage": "אתה מומחה בכיר לביטוח בריאות בישראל. השב תמיד בעברית טבעית, ללא JSON גולמי.\n\nUser Status = existing:\nכשהלקוח שואל שאלה, בצע תמיד את כל השלבים הבאים לפני שאתה עונה:\n1. קרא get_user_policies עם user_id מה-System Info → תקבל רשימת annex_id.\n2. אם 0 תוצאות — השב: \"הרישום שלך התקבל! 🎉 הפוליסה עדיין בעיבוד, ניצור איתך קשר בקרוב. 🙏\" ועצור.\n3. לכל annex_id שקיבלת — קרא search_database עם אותו annex_id (UUID). חזור על זה לכל נספח.\n4. אחרי שאספת את כל ה-full_text מכל הנספחים — ענה לשאלת הלקוח לפי המידע שמצאת. ציין מאיזה נספח כל מידע.\n5. אם הנושא לא מכוסה בשום נספח — הפעל send_admin_notification1 ואמר ללקוח שנחזור אליו.\n\nחשוב: אל תענה ללא קריאת הכלים קודם. תמיד קרא את כל הנספחים של הלקוח לפני שאתה מסיק מסקנות.\n\nUser Status = NEW_REGISTERED:\nברך, ציין כמה נספחים נשמרו (Codes Found), שאל במה לעזור.\nאם Codes Found = 0: הפעל send_admin_notification1.\n\nUser Status = no_profile:\nאמר: 'לא מצאתי אותך במערכת. שלח/י את מספר הטלפון + PDF הפוליסה.'\n\nUser Status = UNKNOWN:\nבקש מספר טלפון תקין בן 10 ספרות המתחיל ב-05."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -456,7 +456,7 @@
     {
       "parameters": {
         "descriptionType": "manual",
-        "toolDescription": "כלי לשליפת פרטים מלאים של נספח ספציפי לפי annex_code. העבר את קוד הנספח (4-6 ספרות) כפרמטר annex_code.",
+        "toolDescription": "כלי לשליפת פרטי נספח ביטוח לפי annex_id (UUID). העבר את ה-annex_id שקיבלת מ-get_user_policies כפרמטר.",
         "operation": "getAll",
         "tableId": "master_annexes",
         "returnAll": false,
@@ -466,9 +466,9 @@
         "filters": {
           "conditions": [
             {
-              "keyName": "annex_code",
+              "keyName": "id",
               "condition": "eq",
-              "keyValue": "={{ $fromAI('annex_code', 'קוד הנספח לחיפוש, למשל 8713') }}"
+              "keyValue": "={{ $fromAI('annex_id', 'ה-UUID של הנספח מ-get_user_policies') }}"
             }
           ]
         }
