@@ -40,14 +40,12 @@ st.markdown("""
   background: white !important; min-height: 100vh !important;
   padding: 48px 56px !important; direction: rtl;
 }
-/* Global RTL for all text in right panel */
+/* Global RTL for text elements only — not structural divs */
 [data-testid="stHorizontalBlock"] > div:last-child p,
 [data-testid="stHorizontalBlock"] > div:last-child h1,
 [data-testid="stHorizontalBlock"] > div:last-child h2,
 [data-testid="stHorizontalBlock"] > div:last-child h3,
-[data-testid="stHorizontalBlock"] > div:last-child label,
-[data-testid="stHorizontalBlock"] > div:last-child span,
-[data-testid="stHorizontalBlock"] > div:last-child div {
+[data-testid="stHorizontalBlock"] > div:last-child label {
   text-align: right !important; direction: rtl !important;
 }
 .badge {
@@ -112,7 +110,9 @@ label { font-size: 0.875rem !important; font-weight: 500 !important; color: #111
 [data-testid="stFileUploader"] {
   background: rgba(240,253,244,0.4) !important; border: 2px dashed #D1D5DB !important; border-radius: 12px !important;
 }
-[data-testid="stFileUploader"] > div { direction: rtl !important; text-align: right !important; }
+[data-testid="stFileUploader"] section { direction: ltr !important; }
+[data-testid="stFileUploader"] section > div { direction: rtl !important; text-align: right !important; }
+[data-testid="stFileUploader"] button { direction: ltr !important; }
 .stButton > button[kind="primary"] {
   background: #16B364 !important; border: none !important; border-radius: 999px !important;
   height: 52px !important; font-size: 1.05rem !important; font-weight: 700 !important;
