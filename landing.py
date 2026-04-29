@@ -153,6 +153,7 @@ defaults = {
     "_otp": "", "_otp_exp": None,
     "admin_authed": False,
     "admin_client": None,
+    "agent_registered_code": "",
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -271,6 +272,129 @@ def _logo(title: str, sub: str = ""):
 
 
 # ── PAGES ──────────────────────────────────────────────────────────────────────
+
+def page_choose():
+    """Landing: choose client or agent registration."""
+    left, right = st.columns([1, 1])
+    with left:
+        _hero()
+    with right:
+        _logo("ברוכים הבאים!", "במה תרצה להתחיל?")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown("""
+<div style="display:flex;flex-direction:column;gap:16px;direction:rtl">
+  <div style="background:#F0FDF4;border:2px solid #D1FAE5;border-radius:16px;padding:24px;text-align:right;cursor:pointer">
+    <div style="font-size:2rem;margin-bottom:8px">👤</div>
+    <div style="font-weight:700;font-size:1.1rem;color:#111827;margin-bottom:6px">אני לקוח</div>
+    <div style="font-size:0.9rem;color:#6B7280">רוצה לדעת מה הביטוח שלי מכסה</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+        if st.button("המשך כלקוח", type="primary", use_container_width=True):
+            st.session_state.step = "form"
+            st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown("""
+<div style="background:#F8FAFF;border:2px solid #DBEAFE;border-radius:16px;padding:24px;text-align:right">
+  <div style="font-size:2rem;margin-bottom:8px">🏢</div>
+  <div style="font-weight:700;font-size:1.1rem;color:#111827;margin-bottom:6px">אני סוכן ביטוח</div>
+  <div style="font-size:0.9rem;color:#6B7280">רוצה להציע את הכלי ללקוחות שלי</div>
+</div>
+""", unsafe_allow_html=True)
+        if st.button("המשך כסוכן", use_container_width=True):
+            st.session_state.step = "agent_register"
+            st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("כבר נרשמת? כניסה"):
+            st.session_state.step = "login"
+            st.rerun()
+
+
+def page_agent_register():
+    """Agent self-registration."""
+    left, right = st.columns([1, 1])
+    with left:
+        _hero()
+    with right:
+        _logo("הרשמה כסוכן ביטוח", "צור את הסביבה שלך ב-BituachBot")
+
+        full_name = st.text_input("שם מלא", placeholder="ישראל ישראלי")
+        email = st.text_input("אימייל", placeholder="israel@example.com")
+        agent_code = st.text_input("קוד סוכן (באנגלית)", placeholder="LEON", max_chars=20,
+                                   help="הקוד שיופיע בקישור שלך. רק אותיות ומספרים.")
+        password = st.text_input("סיסמת ניהול", type="password", placeholder="בחר סיסמה חזקה")
+        password2 = st.text_input("אימות סיסמה", type="password", placeholder="חזור על הסיסמה")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("צור חשבון סוכן", type="primary", use_container_width=True):
+            errors = []
+            clean_code = re.sub(r"[^A-Za-z0-9]", "", agent_code).upper()
+            if not full_name.strip():
+                errors.append("נא להזין שם מלא.")
+            if not clean_code or len(clean_code) < 2:
+                errors.append("קוד סוכן חייב להכיל לפחות 2 תווים (אותיות/מספרים).")
+            if not password or len(password) < 6:
+                errors.append("סיסמה חייבת להכיל לפחות 6 תווים.")
+            if password != password2:
+                errors.append("הסיסמאות אינן תואמות.")
+            if errors:
+                for e in errors:
+                    st.error(e)
+            else:
+                ok, result = _db().create_agent(clean_code, full_name.strip(), password, email.strip())
+                if ok:
+                    st.session_state.agent_registered_code = clean_code
+                    st.session_state.step = "agent_success"
+                    st.rerun()
+                elif result == "agent_exists":
+                    st.error(f"קוד הסוכן '{clean_code}' כבר תפוס. בחר קוד אחר.")
+                else:
+                    st.error(f"שגיאה: {result}")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("← חזרה"):
+            st.session_state.step = "choose"
+            st.rerun()
+
+
+def page_agent_success():
+    """Shown after successful agent registration."""
+    code = st.session_state.agent_registered_code
+    base_url = "https://bituachbot.streamlit.app"
+    left, right = st.columns([1, 1])
+    with left:
+        _hero()
+    with right:
+        _logo("החשבון שלך מוכן! 🎉")
+        st.markdown(f"""
+<div style="direction:rtl;text-align:right">
+  <p style="color:#374151;font-size:1rem;line-height:1.8">
+    שלום! הסביבה שלך ב-BituachBot מוכנה.<br>
+    שלח את הקישורים האלה ללקוחות שלך:
+  </p>
+
+  <div style="background:#F0FDF4;border:1px solid #D1FAE5;border-radius:12px;padding:16px;margin:16px 0">
+    <div style="font-size:0.8rem;color:#16B364;font-weight:700;margin-bottom:6px">🔗 קישור לרישום לקוחות</div>
+    <code style="font-size:0.9rem;color:#111827;word-break:break-all">{base_url}/?agent={code}</code>
+  </div>
+
+  <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;padding:16px;margin:16px 0">
+    <div style="font-size:0.8rem;color:#EA580C;font-weight:700;margin-bottom:6px">🔐 פאנל הניהול שלך</div>
+    <code style="font-size:0.9rem;color:#111827;word-break:break-all">{base_url}/?agent={code}&admin=1</code>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("כניסה לפאנל הניהול", type="primary", use_container_width=True):
+            st.query_params["agent"] = code
+            st.query_params["admin"] = "1"
+            st.rerun()
+
 
 def page_form():
     left, right = st.columns([1, 1])
@@ -649,5 +773,14 @@ else:
         page_dashboard()
     elif step == "login":
         page_login()
+    elif step == "agent_register":
+        page_agent_register()
+    elif step == "agent_success":
+        page_agent_success()
+    elif step == "form" and _agent:
+        # Direct link with ?agent=CODE — go straight to client registration
+        page_form()
+    elif step == "choose" or (step == "form" and not _agent):
+        page_choose()
     else:
         page_form()
