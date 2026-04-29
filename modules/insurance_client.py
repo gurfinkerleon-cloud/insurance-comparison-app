@@ -2,7 +2,8 @@
 InsuranceClientDB — Supabase client for BituachBot landing page.
 
 Tables used:
-  profiles         (id, phone_number, full_name, teudat_zehut)
+  agents           (id, agent_code, full_name, admin_password, email)
+  profiles         (id, phone_number, full_name, teudat_zehut, agent_id)
   master_annexes   (id, annex_code, annex_name, company_id, full_text)
   user_policies    (id, user_id, annex_id)
   insurance_companies (id, name)
@@ -38,6 +39,38 @@ class InsuranceClientDB:
         self._green_instance = _load_secret("GREEN_API_INSTANCE")
         self._green_token = _load_secret("GREEN_API_TOKEN")
 
+    # ── AGENTS ────────────────────────────────────────────────────────────────
+
+    def get_agent_by_code(self, code: str) -> dict | None:
+        try:
+            res = (
+                self.client.table("agents")
+                .select("id, agent_code, full_name, admin_password, email")
+                .eq("agent_code", code.upper())
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as e:
+            print(f"[InsuranceClientDB] get_agent_by_code: {e}")
+            return None
+
+    def create_agent(self, agent_code: str, full_name: str, admin_password: str, email: str = "") -> tuple[bool, str]:
+        try:
+            existing = self.get_agent_by_code(agent_code)
+            if existing:
+                return False, "agent_exists"
+            res = self.client.table("agents").insert({
+                "agent_code": agent_code.upper(),
+                "full_name": full_name,
+                "admin_password": admin_password,
+                "email": email,
+            }).execute()
+            return (True, res.data[0]["id"]) if res.data else (False, "שגיאה ביצירת הסוכן")
+        except Exception as e:
+            print(f"[InsuranceClientDB] create_agent: {e}")
+            return False, str(e)
+
     # ── PROFILES ──────────────────────────────────────────────────────────────
 
     def get_profile_by_phone(self, phone: str) -> dict | None:
@@ -49,7 +82,7 @@ class InsuranceClientDB:
             return None
 
     def register_user_with_policies(
-        self, phone: str, name: str, annex_codes: list[str], tz: str
+        self, phone: str, name: str, annex_codes: list[str], tz: str, agent_id: str = ""
     ) -> tuple[bool, str]:
         """
         Creates a new profile and links annex codes.
@@ -66,6 +99,8 @@ class InsuranceClientDB:
             profile_data: dict = {"phone_number": phone, "full_name": name}
             if tz:
                 profile_data["teudat_zehut"] = tz
+            if agent_id:
+                profile_data["agent_id"] = agent_id
 
             try:
                 res = self.client.table("profiles").insert(profile_data).execute()
@@ -101,10 +136,13 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] register_user_with_policies: {e}")
             return False, f"שגיאה: {str(e)}"
 
-    def get_profiles_without_policies(self) -> list[dict]:
-        """Returns all profiles that have no linked user_policies."""
+    def get_profiles_without_policies(self, agent_id: str = "") -> list[dict]:
+        """Returns profiles with no linked user_policies, optionally filtered by agent."""
         try:
-            all_profiles = self.client.table("profiles").select("id, phone_number, full_name, created_at").execute()
+            q = self.client.table("profiles").select("id, phone_number, full_name, created_at")
+            if agent_id:
+                q = q.eq("agent_id", agent_id)
+            all_profiles = q.execute()
             if not all_profiles.data:
                 return []
             result = []

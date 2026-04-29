@@ -129,6 +129,22 @@ label { font-size: 0.875rem !important; font-weight: 500 !important; color: #111
 </style>
 """, unsafe_allow_html=True)
 
+# ── AGENT CONTEXT ─────────────────────────────────────────────────────────────
+_params = st.query_params
+_agent_code = _params.get("agent", "").upper()
+_is_admin = _params.get("admin") == "1"
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_agent(code: str) -> dict | None:
+    if not code:
+        return None
+    try:
+        return _db().get_agent_by_code(code)
+    except Exception:
+        return None
+
+_agent = _load_agent(_agent_code) if _agent_code else None
+
 # ── SESSION STATE ──────────────────────────────────────────────────────────────
 defaults = {
     "step": "form",
@@ -136,7 +152,7 @@ defaults = {
     "annex_count": 0,
     "_otp": "", "_otp_exp": None,
     "admin_authed": False,
-    "admin_client": None,  # dict with profile data of selected client
+    "admin_client": None,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -295,8 +311,9 @@ def page_form():
                     st.error(e)
             else:
                 db = _db()
+                agent_id = _agent["id"] if _agent else ""
                 ok, result = db.register_user_with_policies(
-                    clean_phone, full_name.strip(), annex_codes, clean_tz
+                    clean_phone, full_name.strip(), annex_codes, clean_tz, agent_id
                 )
                 if ok:
                     st.session_state.reg_name = full_name.strip()
@@ -484,15 +501,23 @@ def page_admin():
 </style>
 """, unsafe_allow_html=True)
 
-    st.markdown('<div class="admin-header">🔐 BituachBot — ממשק ניהול</div>', unsafe_allow_html=True)
+    agent_name = _agent["full_name"] if _agent else "מנהל ראשי"
+    agent_id   = _agent["id"] if _agent else ""
+    st.markdown(f'<div class="admin-header">🔐 BituachBot — ממשק ניהול | {agent_name}</div>', unsafe_allow_html=True)
 
-    admin_password = _get_secret("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
+    # Password: agent's own password, or global ADMIN_PASSWORD for super-admin
+    if _agent:
+        correct_password = _agent.get("admin_password", "")
+    else:
+        correct_password = _get_secret("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
 
     if not st.session_state.admin_authed:
-        st.markdown("**סיסמת מנהל**")
+        if not _agent and not correct_password:
+            st.error("❌ לא נמצא סוכן. השתמש בקישור ?agent=CODE&admin=1")
+            return
         pwd = st.text_input("סיסמה", type="password", placeholder="הכנס סיסמה")
         if st.button("כניסה", type="primary"):
-            if admin_password and pwd == admin_password:
+            if correct_password and pwd == correct_password:
                 st.session_state.admin_authed = True
                 st.rerun()
             else:
@@ -582,7 +607,7 @@ def page_admin():
     if st.button("🔄 רענן רשימה"):
         st.rerun()
 
-    pending_clients = _db().get_profiles_without_policies()
+    pending_clients = _db().get_profiles_without_policies(agent_id)
     if not pending_clients:
         st.success("✅ כל הלקוחות כבר מקושרים לפוליסה")
     else:
@@ -610,8 +635,7 @@ def page_admin():
 
 
 # ── ROUTER ─────────────────────────────────────────────────────────────────────
-_params = st.query_params
-if _params.get("admin") == "1":
+if _is_admin:
     page_admin()
 else:
     step = st.session_state.step
