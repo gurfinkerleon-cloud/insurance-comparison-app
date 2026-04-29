@@ -180,6 +180,40 @@ def _get_secret(key: str) -> str:
         return ""
 
 
+def _bot_whatsapp_number() -> str:
+    return _get_secret("BOT_WHATSAPP_NUMBER") or os.getenv("BOT_WHATSAPP_NUMBER", "")
+
+
+def _whatsapp_card(phone: str):
+    """Shows a 'save this number' card. phone in format 05XXXXXXXX"""
+    if not phone:
+        return
+    digits = phone.replace("-", "").replace(" ", "")
+    wa_digits = "972" + digits[1:] if digits.startswith("0") else digits
+    wa_link = f"https://wa.me/{wa_digits}"
+    st.markdown(f"""
+<div style="background:#F0FDF4;border:2px solid #D1FAE5;border-radius:14px;
+     padding:20px 24px;margin:20px 0;direction:rtl;text-align:right">
+  <div style="font-size:1.1rem;font-weight:700;color:#111827;margin-bottom:6px">
+    💬 שמור את הבוט באנשי הקשר שלך
+  </div>
+  <div style="font-size:0.9rem;color:#6B7280;margin-bottom:14px">
+    כדי לשלוח הודעות לבוט ולקבל תשובות, שמור את המספר הזה:
+  </div>
+  <div style="font-size:1.6rem;font-weight:800;color:#16B364;
+       letter-spacing:2px;margin-bottom:14px;text-align:center">
+    {phone}
+  </div>
+  <a href="{wa_link}" target="_blank" style="
+     display:block;background:#25D366;color:white;text-align:center;
+     padding:12px;border-radius:999px;font-weight:700;font-size:1rem;
+     text-decoration:none;">
+    📲 פתח WhatsApp ושמור מספר
+  </a>
+</div>
+""", unsafe_allow_html=True)
+
+
 @st.cache_resource(show_spinner=False)
 def _claude() -> Anthropic:
     api_key = _get_secret("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "").strip()
@@ -461,10 +495,12 @@ def page_form():
             st.session_state.step = "login"
             st.rerun()
 
+        terms_url   = _get_secret("TERMS_URL")   or os.getenv("TERMS_URL",   "#")
+        privacy_url = _get_secret("PRIVACY_URL") or os.getenv("PRIVACY_URL", "#")
         st.markdown(
-            '<p style="text-align:center;font-size:0.78rem;color:#9CA3AF;margin-top:16px">'
-            'בהרשמה אני מסכימ/ה ל<a href="#" style="color:#16B364">תנאי השימוש</a>'
-            ' ול<a href="#" style="color:#16B364">מדיניות הפרטיות</a></p>',
+            f'<p style="text-align:center;font-size:0.78rem;color:#9CA3AF;margin-top:16px">'
+            f'בהרשמה אני מסכימ/ה ל<a href="{terms_url}" target="_blank" style="color:#16B364">תנאי השימוש</a>'
+            f' ול<a href="{privacy_url}" target="_blank" style="color:#16B364">מדיניות הפרטיות</a></p>',
             unsafe_allow_html=True,
         )
 
@@ -526,6 +562,9 @@ def page_pending():
   </div>
 </div>
 """, unsafe_allow_html=True)
+        bot_num = _bot_whatsapp_number()
+        if bot_num:
+            _whatsapp_card(bot_num)
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("← חזרה לדף הראשי"):
             for k, v in defaults.items():
@@ -568,6 +607,10 @@ def page_dashboard():
 """, unsafe_allow_html=True)
         else:
             st.info("לא נמצאו נספחים — הנציג שלנו ייצור איתך קשר בקרוב.")
+
+        bot_num = _bot_whatsapp_number()
+        if bot_num:
+            _whatsapp_card(bot_num)
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("← יציאה"):
