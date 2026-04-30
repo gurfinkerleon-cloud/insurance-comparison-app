@@ -55,6 +55,31 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] get_agent_by_code: {e}")
             return None
 
+    def get_agent_by_email_and_password(self, email: str, password: str) -> dict | None:
+        try:
+            res = (
+                self.client.table("agents")
+                .select("id, agent_code, full_name, admin_password, email")
+                .eq("email", email.lower().strip())
+                .limit(1)
+                .execute()
+            )
+            if not res.data:
+                return None
+            agent = res.data[0]
+            return agent if agent.get("admin_password") == password else None
+        except Exception as e:
+            print(f"[InsuranceClientDB] get_agent_by_email_and_password: {e}")
+            return None
+
+    def get_all_agents(self) -> list[dict]:
+        try:
+            res = self.client.table("agents").select("id, agent_code, full_name").execute()
+            return res.data or []
+        except Exception as e:
+            print(f"[InsuranceClientDB] get_all_agents: {e}")
+            return []
+
     def create_agent(self, agent_code: str, full_name: str, admin_password: str, email: str = "") -> tuple[bool, str]:
         try:
             existing = self.get_agent_by_code(agent_code)

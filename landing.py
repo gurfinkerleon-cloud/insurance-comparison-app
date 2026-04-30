@@ -154,6 +154,7 @@ defaults = {
     "admin_authed": False,
     "admin_client": None,
     "agent_registered_code": "",
+    "logged_in_agent": None,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -276,6 +277,25 @@ def _send_otp(phone: str) -> str:
     return code
 
 
+def _auto_agent_code(name: str, email: str) -> str:
+    import random as _rand
+    if "@" in email:
+        prefix = re.sub(r"[^A-Za-z0-9]", "", email.split("@")[0]).upper()[:6]
+    else:
+        prefix = re.sub(r"[^A-Za-z]", "", name).upper()[:4]
+    if len(prefix) < 2:
+        prefix = "AGENT"
+    return prefix + str(_rand.randint(100, 999))
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _all_agents() -> list[dict]:
+    try:
+        return _db().get_all_agents()
+    except Exception:
+        return []
+
+
 # ── HERO PANEL ─────────────────────────────────────────────────────────────────
 def _hero():
     bullets = "".join(
@@ -344,7 +364,7 @@ def page_choose():
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("כבר נרשמת? כניסה"):
-            st.session_state.step = "login"
+            st.session_state.step = "login_choose"
             st.rerun()
 
 
@@ -358,19 +378,16 @@ def page_agent_register():
 
         full_name = st.text_input("שם מלא", placeholder="ישראל ישראלי")
         email = st.text_input("אימייל", placeholder="israel@example.com")
-        agent_code = st.text_input("קוד סוכן (באנגלית)", placeholder="LEON", max_chars=20,
-                                   help="הקוד שיופיע בקישור שלך. רק אותיות ומספרים.")
         password = st.text_input("סיסמת ניהול", type="password", placeholder="בחר סיסמה חזקה")
         password2 = st.text_input("אימות סיסמה", type="password", placeholder="חזור על הסיסמה")
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("צור חשבון סוכן", type="primary", use_container_width=True):
             errors = []
-            clean_code = re.sub(r"[^A-Za-z0-9]", "", agent_code).upper()
             if not full_name.strip():
                 errors.append("נא להזין שם מלא.")
-            if not clean_code or len(clean_code) < 2:
-                errors.append("קוד סוכן חייב להכיל לפחות 2 תווים (אותיות/מספרים).")
+            if not email.strip():
+                errors.append("נא להזין אימייל.")
             if not password or len(password) < 6:
                 errors.append("סיסמה חייבת להכיל לפחות 6 תווים.")
             if password != password2:
@@ -379,15 +396,18 @@ def page_agent_register():
                 for e in errors:
                     st.error(e)
             else:
-                ok, result = _db().create_agent(clean_code, full_name.strip(), password, email.strip())
-                if ok:
-                    st.session_state.agent_registered_code = clean_code
-                    st.session_state.step = "agent_success"
-                    st.rerun()
-                elif result == "agent_exists":
-                    st.error(f"קוד הסוכן '{clean_code}' כבר תפוס. בחר קוד אחר.")
+                for _ in range(5):
+                    code = _auto_agent_code(full_name.strip(), email.strip())
+                    ok, result = _db().create_agent(code, full_name.strip(), password, email.strip())
+                    if ok:
+                        st.session_state.agent_registered_code = code
+                        st.session_state.step = "agent_success"
+                        st.rerun()
+                    elif result != "agent_exists":
+                        st.error(f"שגיאה: {result}")
+                        break
                 else:
-                    st.error(f"שגיאה: {result}")
+                    st.error("לא ניתן ליצור קוד ייחודי. נסה שוב.")
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("← חזרה"):
@@ -425,9 +445,13 @@ def page_agent_success():
 
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("כניסה לפאנל הניהול", type="primary", use_container_width=True):
-            st.query_params["agent"] = code
-            st.query_params["admin"] = "1"
-            st.rerun()
+            agent = _db().get_agent_by_code(code)
+            if agent:
+                st.session_state.logged_in_agent = agent
+                st.session_state.step = "agent_dashboard"
+                st.rerun()
+            else:
+                st.error("שגיאה בטעינת נתוני הסוכן")
 
 
 def page_form():
@@ -440,6 +464,19 @@ def page_form():
         full_name = st.text_input("שם מלא", placeholder="ישראל ישראלי")
         phone = st.text_input("טלפון נייד", placeholder="050-1234567")
         teudat_zehut = st.text_input("תעודת זהות", placeholder="123456789", max_chars=9)
+
+        # Agent selector — only if not arriving via ?agent=CODE link
+        selected_agent_id = _agent["id"] if _agent else ""
+        if not _agent:
+            agents = _all_agents()
+            if agents:
+                options = ["ללא סוכן (לקוח עצמאי)"] + [f"{a['full_name']}" for a in agents]
+                choice = st.selectbox("הסוכן שלך (רשות)", options,
+                                      help="בחר את הסוכן שרשם אותך, או השאר ריק")
+                if choice != options[0]:
+                    idx = options.index(choice) - 1
+                    selected_agent_id = agents[idx]["id"]
+
         uploaded = st.file_uploader("העלאת קובץ PDF (רשות)", type=["pdf"])
 
         annex_codes: list[str] = []
@@ -469,9 +506,8 @@ def page_form():
                     st.error(e)
             else:
                 db = _db()
-                agent_id = _agent["id"] if _agent else ""
                 ok, result = db.register_user_with_policies(
-                    clean_phone, full_name.strip(), annex_codes, clean_tz, agent_id
+                    clean_phone, full_name.strip(), annex_codes, clean_tz, selected_agent_id
                 )
                 if ok:
                     st.session_state.reg_name = full_name.strip()
@@ -625,6 +661,73 @@ def page_dashboard():
             st.rerun()
 
 
+def page_login_choose():
+    left, right = st.columns([1, 1])
+    with left:
+        _hero()
+    with right:
+        _logo("כניסה", "בחר את סוג המשתמש שלך")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown("""
+<div style="background:#F0FDF4;border:2px solid #D1FAE5;border-radius:16px;padding:20px 24px;text-align:right;margin-bottom:16px">
+  <div style="font-size:1.6rem;margin-bottom:6px">👤</div>
+  <div style="font-weight:700;font-size:1rem;color:#111827;margin-bottom:4px">כניסה כלקוח</div>
+  <div style="font-size:0.88rem;color:#6B7280">אימות בקוד וואטסאפ</div>
+</div>
+""", unsafe_allow_html=True)
+        if st.button("כניסה כלקוח", type="primary", use_container_width=True):
+            st.session_state.step = "login"
+            st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        st.markdown("""
+<div style="background:#F8FAFF;border:2px solid #DBEAFE;border-radius:16px;padding:20px 24px;text-align:right;margin-bottom:16px">
+  <div style="font-size:1.6rem;margin-bottom:6px">🏢</div>
+  <div style="font-weight:700;font-size:1rem;color:#111827;margin-bottom:4px">כניסה כסוכן</div>
+  <div style="font-size:0.88rem;color:#6B7280">אימייל וסיסמה</div>
+</div>
+""", unsafe_allow_html=True)
+        if st.button("כניסה כסוכן", use_container_width=True):
+            st.session_state.step = "agent_login"
+            st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("← חזרה"):
+            st.session_state.step = "choose"
+            st.rerun()
+
+
+def page_agent_login():
+    left, right = st.columns([1, 1])
+    with left:
+        _hero()
+    with right:
+        _logo("כניסה כסוכן", "הזן את פרטי הגישה שלך")
+
+        email = st.text_input("אימייל", placeholder="israel@example.com")
+        password = st.text_input("סיסמה", type="password", placeholder="הסיסמה שלך")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("כניסה", type="primary", use_container_width=True):
+            if not email.strip() or not password:
+                st.error("נא למלא אימייל וסיסמה.")
+            else:
+                agent = _db().get_agent_by_email_and_password(email.strip(), password)
+                if agent:
+                    st.session_state.logged_in_agent = agent
+                    st.session_state.step = "agent_dashboard"
+                    st.rerun()
+                else:
+                    st.error("האימייל או הסיסמה שגויים.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("← חזרה"):
+            st.session_state.step = "login_choose"
+            st.rerun()
+
+
 def page_login():
     left, right = st.columns([1, 1])
     with left:
@@ -657,9 +760,24 @@ def page_login():
             st.rerun()
 
 
-# ── ADMIN PAGE ─────────────────────────────────────────────────────────────────
+def page_agent_dashboard():
+    """Session-based agent dashboard (no URL params needed)."""
+    agent = st.session_state.logged_in_agent
+    if not agent:
+        st.session_state.step = "login_choose"
+        st.rerun()
+        return
+    _render_admin_content(agent)
+    st.markdown("---")
+    if st.button("← יציאה מממשק הניהול"):
+        st.session_state.logged_in_agent = None
+        st.session_state.admin_client = None
+        st.session_state.step = "choose"
+        st.rerun()
 
-def page_admin():
+
+def _render_admin_content(agent: dict):
+    """Shared admin UI used by both page_agent_dashboard and page_admin."""
     st.markdown("""
 <style>
 .admin-header {
@@ -674,30 +792,22 @@ def page_admin():
 </style>
 """, unsafe_allow_html=True)
 
-    agent_name = _agent["full_name"] if _agent else "מנהל ראשי"
-    agent_id   = _agent["id"] if _agent else ""
+    agent_name = agent.get("full_name", "מנהל")
+    agent_id   = agent.get("id", "")
+    agent_code = agent.get("agent_code", "")
+    base_url   = "https://bituachbot.streamlit.app"
     st.markdown(f'<div class="admin-header">🔐 BituachBot — ממשק ניהול | {agent_name}</div>', unsafe_allow_html=True)
 
-    # Password: agent's own password, or global ADMIN_PASSWORD for super-admin
-    if _agent:
-        correct_password = _agent.get("admin_password", "")
-    else:
-        correct_password = _get_secret("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
-
-    if not st.session_state.admin_authed:
-        if not _agent and not correct_password:
-            st.error("❌ לא נמצא סוכן. השתמש בקישור ?agent=CODE&admin=1")
-            return
-        pwd = st.text_input("סיסמה", type="password", placeholder="הכנס סיסמה")
-        if st.button("כניסה", type="primary"):
-            if correct_password and pwd == correct_password:
-                st.session_state.admin_authed = True
-                st.rerun()
-            else:
-                st.error("סיסמה שגויה")
-        return
-
-    st.success("✅ מחובר כמנהל")
+    # Quick-share links
+    with st.expander("🔗 קישורים לשיתוף עם לקוחות", expanded=False):
+        st.markdown(f"""
+<div style="direction:rtl">
+  <div style="background:#F0FDF4;border:1px solid #D1FAE5;border-radius:10px;padding:12px;margin-bottom:10px">
+    <div style="font-size:0.8rem;color:#16B364;font-weight:700;margin-bottom:4px">קישור רישום לקוחות</div>
+    <code style="font-size:0.85rem;color:#111827;word-break:break-all">{base_url}/?agent={agent_code}</code>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("### העלאת פוליסה עבור לקוח קיים")
@@ -760,16 +870,12 @@ def page_admin():
                         linked, skipped = _db().link_annex_codes(client["id"], annex_codes)
                         if linked > 0:
                             st.success(f"✅ קושרו {linked} נספחים חדשים בהצלחה!")
-                            _db().send_ready(
-                                client["phone_number"],
-                                client["full_name"],
-                                linked,
-                            )
+                            _db().send_ready(client["phone_number"], client["full_name"], linked)
                             st.info("📱 נשלחה הודעת WhatsApp ללקוח")
                         else:
-                            st.warning("לא נוספו נספחים חדשים (ייתכן שכולם כבר קיימים או לא נמצאו ב-master_annexes)")
+                            st.warning("לא נוספו נספחים חדשים")
                         if skipped:
-                            st.caption(f"נספחים שדולגו (לא נמצאו ב-master_annexes): {', '.join(skipped)}")
+                            st.caption(f"נספחים שדולגו: {', '.join(skipped)}")
                         st.session_state.admin_client = None
                         st.rerun()
 
@@ -825,6 +931,39 @@ def page_admin():
             else:
                 st.error("לא ניתן לקרוא טקסט מהקובץ")
 
+
+# ── ADMIN PAGE ─────────────────────────────────────────────────────────────────
+
+def page_admin():
+    """Legacy URL-based admin (?agent=CODE&admin=1). Kept for backward compat."""
+    agent_for_admin = _agent
+    if not agent_for_admin:
+        correct_password = _get_secret("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
+        if not correct_password:
+            st.error("❌ לא נמצא סוכן. השתמש בקישור ?agent=CODE&admin=1")
+            return
+        if not st.session_state.admin_authed:
+            pwd = st.text_input("סיסמה", type="password", placeholder="הכנס סיסמה")
+            if st.button("כניסה", type="primary"):
+                if pwd == correct_password:
+                    st.session_state.admin_authed = True
+                    st.rerun()
+                else:
+                    st.error("סיסמה שגויה")
+            return
+    elif not st.session_state.admin_authed:
+        correct_password = _agent.get("admin_password", "")
+        pwd = st.text_input("סיסמה", type="password", placeholder="הכנס סיסמה")
+        if st.button("כניסה", type="primary"):
+            if correct_password and pwd == correct_password:
+                st.session_state.admin_authed = True
+                st.rerun()
+            else:
+                st.error("סיסמה שגויה")
+        return
+
+    _render_admin_content(agent_for_admin or {"full_name": "מנהל ראשי", "id": "", "agent_code": ""})
+
     st.markdown("---")
     if st.button("← יציאה מממשק הניהול"):
         st.session_state.admin_authed = False
@@ -838,7 +977,9 @@ if _is_admin:
     page_admin()
 else:
     step = st.session_state.step
-    if step == "verify_new":
+    if step == "agent_dashboard":
+        page_agent_dashboard()
+    elif step == "verify_new":
         page_verify(is_new=True)
     elif step == "verify_login":
         page_verify(is_new=False)
@@ -848,6 +989,10 @@ else:
         page_dashboard()
     elif step == "login":
         page_login()
+    elif step == "login_choose":
+        page_login_choose()
+    elif step == "agent_login":
+        page_agent_login()
     elif step == "agent_register":
         page_agent_register()
     elif step == "agent_success":
