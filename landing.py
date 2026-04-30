@@ -594,17 +594,23 @@ def page_dashboard():
 
         policies = _db().get_user_policies(st.session_state.reg_user_id)
         if policies:
+            ready = [p for p in policies if p["has_data"]]
+            pending = [p for p in policies if not p["has_data"]]
             st.markdown(f'<div class="section-title">הנספחים שלך ({len(policies)})</div>', unsafe_allow_html=True)
-            for p in policies:
-                annex = p.get("master_annexes") or {}
-                company = (annex.get("insurance_companies") or {}).get("name", "")
+            for p in ready:
                 st.markdown(f"""
 <div class="policy-card">
-  <div class="annex-code">נספח {annex.get('annex_code','')}</div>
-  <div class="annex-name">{annex.get('annex_name','')}</div>
-  <div class="company-name">{company}</div>
-</div>
-""", unsafe_allow_html=True)
+  <div class="annex-code">נספח {p['annex_code']} ✅</div>
+  <div class="annex-name">{p['annex_name']}</div>
+  <div class="company-name">{p['company']}</div>
+</div>""", unsafe_allow_html=True)
+            for p in pending:
+                st.markdown(f"""
+<div class="policy-card" style="opacity:0.6;border-color:#E5E7EB;background:#F9FAFB">
+  <div class="annex-code" style="color:#9CA3AF">נספח {p['annex_code']} ⏳</div>
+  <div class="annex-name" style="color:#6B7280">{p['annex_name']}</div>
+  <div class="company-name">מידע בעיבוד — בקרוב</div>
+</div>""", unsafe_allow_html=True)
         else:
             st.info("לא נמצאו נספחים — הנציג שלנו ייצור איתך קשר בקרוב.")
 
@@ -728,10 +734,8 @@ def page_admin():
         if existing:
             st.markdown(f"**נספחים קיימים ({len(existing)})**")
             for p in existing:
-                annex = p.get("master_annexes") or {}
-                st.markdown(
-                    f"- נספח **{annex.get('annex_code','')}** — {annex.get('annex_name','')}",
-                )
+                icon = "✅" if p.get("has_data") else "⏳"
+                st.markdown(f"- {icon} נספח **{p.get('annex_code','')}** — {p.get('annex_name','')}")
 
         st.markdown("---")
         st.markdown("#### העלה PDF של הפוליסה")
@@ -792,6 +796,34 @@ def page_admin():
                 if st.button("העלה פוליסה", key=f"sel_{c['id']}"):
                     st.session_state.admin_client = c
                     st.rerun()
+
+    st.markdown("---")
+    st.markdown("### הוספת / עדכון נספח במאגר")
+    st.caption("הוסף נספח חדש למאגר המשותף — כל הלקוחות שיש להם את הקוד יתעדכנו אוטומטית")
+
+    with st.expander("➕ הוסף / עדכן נספח", expanded=False):
+        nispaj_code = st.text_input("קוד נספח", placeholder="8713", key="nispaj_code")
+        nispaj_name = st.text_input("שם נספח", placeholder="אבחנה מהירה", key="nispaj_name")
+        nispaj_pdf  = st.file_uploader("PDF של הנספח", type=["pdf"], key="nispaj_pdf")
+
+        if nispaj_pdf:
+            with st.spinner("קורא PDF..."):
+                nispaj_text = _extract_pdf_text(nispaj_pdf.read())
+            if nispaj_text.strip():
+                st.success(f"נקרא {len(nispaj_text)} תווים מהנספח")
+                if st.button("💾 שמור נספח במאגר", type="primary", key="save_nispaj"):
+                    code = nispaj_code.strip()
+                    name = nispaj_name.strip() or f"נספח {code}"
+                    if not code:
+                        st.error("חובה להזין קוד נספח")
+                    else:
+                        ok, result = _db().upsert_master_annex(code, name, nispaj_text)
+                        if ok:
+                            st.success(f"✅ נספח {code} נשמר! לקוחות עם קוד זה עודכנו אוטומטית.")
+                        else:
+                            st.error(f"שגיאה: {result}")
+            else:
+                st.error("לא ניתן לקרוא טקסט מהקובץ")
 
     st.markdown("---")
     if st.button("← יציאה מממשק הניהול"):

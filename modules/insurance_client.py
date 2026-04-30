@@ -113,28 +113,93 @@ class InsuranceClientDB:
 
             user_id: str = res.data[0]["id"]
 
-            # Link annex codes
             for code in annex_codes:
-                try:
-                    annex = (
-                        self.client.table("master_annexes")
-                        .select("id")
-                        .eq("annex_code", code)
-                        .limit(1)
-                        .execute()
-                    )
-                    if annex.data:
-                        self.client.table("user_policies").insert(
-                            {"user_id": user_id, "annex_id": annex.data[0]["id"]}
-                        ).execute()
-                except Exception as e:
-                    print(f"[InsuranceClientDB] linking annex {code}: {e}")
+                self._save_annex_code(user_id, code)
 
             return True, user_id
 
         except Exception as e:
             print(f"[InsuranceClientDB] register_user_with_policies: {e}")
             return False, f"שגיאה: {str(e)}"
+
+    def _save_annex_code(self, user_id: str, code: str) -> None:
+        """Save annex code to user_policies. Links annex_id if found in master_annexes."""
+        try:
+            # Check already saved
+            existing = (
+                self.client.table("user_policies")
+                .select("id, annex_id")
+                .eq("user_id", user_id)
+                .eq("annex_code", code)
+                .limit(1)
+                .execute()
+            )
+            annex = (
+                self.client.table("master_annexes")
+                .select("id")
+                .eq("annex_code", code)
+                .limit(1)
+                .execute()
+            )
+            annex_id = annex.data[0]["id"] if annex.data else None
+
+            if existing.data:
+                # Update annex_id if it was missing and now we have it
+                if annex_id and not existing.data[0].get("annex_id"):
+                    self.client.table("user_policies").update(
+                        {"annex_id": annex_id}
+                    ).eq("id", existing.data[0]["id"]).execute()
+            else:
+                row = {"user_id": user_id, "annex_code": code}
+                if annex_id:
+                    row["annex_id"] = annex_id
+                self.client.table("user_policies").insert(row).execute()
+        except Exception as e:
+            print(f"[InsuranceClientDB] _save_annex_code {code}: {e}")
+
+    def resolve_pending_codes(self, annex_code: str, annex_id: str) -> int:
+        """After a nispaj is added to master_annexes, link all pending user_policies."""
+        try:
+            res = (
+                self.client.table("user_policies")
+                .update({"annex_id": annex_id})
+                .eq("annex_code", annex_code)
+                .is_("annex_id", "null")
+                .execute()
+            )
+            return len(res.data) if res.data else 0
+        except Exception as e:
+            print(f"[InsuranceClientDB] resolve_pending_codes {annex_code}: {e}")
+            return 0
+
+    def upsert_master_annex(self, annex_code: str, annex_name: str, full_text: str, company_id: str = None) -> tuple[bool, str]:
+        """Add or update a nispaj in master_annexes. Returns (ok, annex_id)."""
+        try:
+            existing = (
+                self.client.table("master_annexes")
+                .select("id")
+                .eq("annex_code", annex_code)
+                .limit(1)
+                .execute()
+            )
+            data = {"annex_code": annex_code, "annex_name": annex_name, "full_text": full_text}
+            if company_id:
+                data["company_id"] = company_id
+
+            if existing.data:
+                annex_id = existing.data[0]["id"]
+                self.client.table("master_annexes").update(data).eq("id", annex_id).execute()
+            else:
+                res = self.client.table("master_annexes").insert(data).execute()
+                if not res.data:
+                    return False, "שגיאה בהוספת הנספח"
+                annex_id = res.data[0]["id"]
+
+            updated = self.resolve_pending_codes(annex_code, annex_id)
+            return True, annex_id
+        except Exception as e:
+            print(f"[InsuranceClientDB] upsert_master_annex {annex_code}: {e}")
+            return False, str(e)
 
     def get_profiles_without_policies(self, agent_id: str = "") -> list[dict]:
         """Returns profiles with no linked user_policies, optionally filtered by agent."""
@@ -162,59 +227,51 @@ class InsuranceClientDB:
             return []
 
     def link_annex_codes(self, user_id: str, annex_codes: list[str]) -> tuple[int, list[str]]:
-        """
-        Link annex codes to an existing user profile.
-        Skips codes already linked.
-        Returns (linked_count, skipped_codes).
-        """
-        linked = 0
-        skipped: list[str] = []
+        """Save all annex codes to user profile. Returns (saved_count, already_existed)."""
+        saved = 0
+        existed: list[str] = []
         for code in annex_codes:
-            try:
-                annex = (
-                    self.client.table("master_annexes")
-                    .select("id")
-                    .eq("annex_code", code)
-                    .limit(1)
-                    .execute()
-                )
-                if not annex.data:
-                    skipped.append(code)
-                    continue
-                annex_id = annex.data[0]["id"]
-                # Check if already linked
-                existing = (
-                    self.client.table("user_policies")
-                    .select("id")
-                    .eq("user_id", user_id)
-                    .eq("annex_id", annex_id)
-                    .limit(1)
-                    .execute()
-                )
-                if existing.data:
-                    skipped.append(code)
-                    continue
-                self.client.table("user_policies").insert(
-                    {"user_id": user_id, "annex_id": annex_id}
-                ).execute()
-                linked += 1
-            except Exception as e:
-                print(f"[InsuranceClientDB] link_annex_codes {code}: {e}")
-                skipped.append(code)
-        return linked, skipped
+            existing = (
+                self.client.table("user_policies")
+                .select("id")
+                .eq("user_id", user_id)
+                .eq("annex_code", code)
+                .limit(1)
+                .execute()
+            )
+            if existing.data:
+                existed.append(code)
+            else:
+                self._save_annex_code(user_id, code)
+                saved += 1
+        return saved, existed
 
     # ── POLICIES ──────────────────────────────────────────────────────────────
 
     def get_user_policies(self, user_id: str) -> list[dict]:
-        """Returns list of annexed policies for a user with annex details."""
+        """Returns all annex codes for a user with availability flag."""
         try:
             res = (
                 self.client.table("user_policies")
-                .select("annex_id, master_annexes(annex_code, annex_name, insurance_companies(name))")
+                .select("id, annex_code, annex_id, master_annexes(annex_code, annex_name, full_text, insurance_companies(name))")
                 .eq("user_id", user_id)
                 .execute()
             )
-            return res.data or []
+            if not res.data:
+                return []
+            result = []
+            for row in res.data:
+                annex = row.get("master_annexes") or {}
+                code = annex.get("annex_code") or row.get("annex_code", "")
+                has_data = bool(annex.get("full_text"))
+                result.append({
+                    "annex_code": code,
+                    "annex_name": annex.get("annex_name", f"נספח {code}"),
+                    "company": (annex.get("insurance_companies") or {}).get("name", ""),
+                    "has_data": has_data,
+                    "annex_id": row.get("annex_id"),
+                })
+            return result
         except Exception as e:
             print(f"[InsuranceClientDB] get_user_policies: {e}")
             return []
