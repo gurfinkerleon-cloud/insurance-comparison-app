@@ -80,6 +80,29 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] get_all_agents: {e}")
             return []
 
+    def reset_agent_password(self, email: str, full_name: str, new_password: str) -> bool:
+        """Reset password after verifying email + full name match."""
+        try:
+            res = (
+                self.client.table("agents")
+                .select("id, full_name")
+                .eq("email", email.lower().strip())
+                .limit(1)
+                .execute()
+            )
+            if not res.data:
+                return False
+            agent = res.data[0]
+            if agent["full_name"].strip().lower() != full_name.strip().lower():
+                return False
+            self.client.table("agents").update(
+                {"admin_password": new_password}
+            ).eq("id", agent["id"]).execute()
+            return True
+        except Exception as e:
+            print(f"[InsuranceClientDB] reset_agent_password: {e}")
+            return False
+
     def create_agent(self, agent_code: str, full_name: str, admin_password: str, email: str = "") -> tuple[bool, str]:
         try:
             existing = self.get_agent_by_code(agent_code)

@@ -27,6 +27,7 @@ st.set_page_config(page_title="BituachBot", page_icon="🛡️", layout="wide",
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
 *, html, body, [class*="css"] { font-family: 'Heebo', sans-serif !important; box-sizing: border-box; }
 #MainMenu, header, footer, [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
 .stApp > header { display: none !important; }
@@ -47,6 +48,26 @@ st.markdown("""
 [data-testid="stHorizontalBlock"] > div:last-child h3,
 [data-testid="stHorizontalBlock"] > div:last-child label {
   text-align: right !important; direction: rtl !important;
+}
+/* Fix Material Symbols icons rendering as text */
+[data-testid="stIconMaterial"] {
+  font-family: 'Material Symbols Sharp' !important;
+  font-style: normal !important; font-weight: normal !important;
+  font-size: 20px !important; line-height: 1 !important;
+  letter-spacing: normal !important; text-transform: none !important;
+  display: inline-block !important; white-space: nowrap !important;
+  word-wrap: normal !important; direction: ltr !important;
+  -webkit-font-smoothing: antialiased !important;
+}
+/* Expander RTL layout */
+[data-testid="stExpander"] details summary {
+  direction: rtl !important; display: flex !important;
+  flex-direction: row-reverse !important; align-items: center !important;
+  justify-content: flex-end !important;
+}
+[data-testid="stExpander"] details summary > div { flex: 1 !important; }
+[data-testid="stExpander"] details summary [data-testid="stIconMaterial"] {
+  margin-left: 0 !important; margin-right: 8px !important;
 }
 .badge {
   display: inline-flex; align-items: center; gap: 8px;
@@ -723,8 +744,53 @@ def page_agent_login():
                     st.error("האימייל או הסיסמה שגויים.")
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("← חזרה"):
-            st.session_state.step = "login_choose"
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("← חזרה"):
+                st.session_state.step = "login_choose"
+                st.rerun()
+        with col2:
+            if st.button("שכחתי סיסמה"):
+                st.session_state.step = "agent_reset_password"
+                st.rerun()
+
+
+def page_agent_reset_password():
+    left, right = st.columns([1, 1])
+    with left:
+        _hero()
+    with right:
+        _logo("איפוס סיסמה", "הזן את פרטיך לאימות")
+
+        email = st.text_input("אימייל", placeholder="israel@example.com")
+        full_name = st.text_input("שם מלא (כפי שנרשמת)", placeholder="ישראל ישראלי")
+        new_password = st.text_input("סיסמה חדשה", type="password", placeholder="לפחות 6 תווים")
+        new_password2 = st.text_input("אימות סיסמה", type="password", placeholder="חזור על הסיסמה")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("עדכן סיסמה", type="primary", use_container_width=True):
+            errors = []
+            if not email.strip() or not full_name.strip():
+                errors.append("נא למלא את כל השדות.")
+            if not new_password or len(new_password) < 6:
+                errors.append("סיסמה חייבת להכיל לפחות 6 תווים.")
+            if new_password != new_password2:
+                errors.append("הסיסמאות אינן תואמות.")
+            if errors:
+                for e in errors:
+                    st.error(e)
+            else:
+                ok = _db().reset_agent_password(email.strip(), full_name.strip(), new_password)
+                if ok:
+                    st.success("✅ הסיסמה עודכנה בהצלחה! כעת תוכל להתחבר.")
+                    st.session_state.step = "agent_login"
+                    st.rerun()
+                else:
+                    st.error("האימייל או השם לא תואמים לחשבון קיים.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("← חזרה לכניסה"):
+            st.session_state.step = "agent_login"
             st.rerun()
 
 
@@ -993,6 +1059,8 @@ else:
         page_login_choose()
     elif step == "agent_login":
         page_agent_login()
+    elif step == "agent_reset_password":
+        page_agent_reset_password()
     elif step == "agent_register":
         page_agent_register()
     elif step == "agent_success":
