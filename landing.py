@@ -147,7 +147,7 @@ _agent = _load_agent(_agent_code) if _agent_code else None
 
 # ── SESSION STATE ──────────────────────────────────────────────────────────────
 defaults = {
-    "step": "form",
+    "step": "choose",
     "reg_name": "", "reg_phone": "", "reg_user_id": "",
     "annex_count": 0,
     "_otp": "", "_otp_exp": None,
@@ -852,10 +852,10 @@ else:
         page_agent_register()
     elif step == "agent_success":
         page_agent_success()
-    elif step == "form" and _agent:
-        # Direct link with ?agent=CODE — go straight to client registration
+    elif step == "form":
         page_form()
-    elif step == "choose" or (step == "form" and not _agent):
-        page_choose()
+    elif _agent:
+        # Direct ?agent=CODE link — skip choose screen
+        page_form()
     else:
-        page_form()
+        page_choose()
