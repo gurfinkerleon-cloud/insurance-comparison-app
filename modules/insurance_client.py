@@ -338,10 +338,10 @@ class InsuranceClientDB:
         digits = re.sub(r"\D", "", phone)
         if digits.startswith("0"):
             digits = "972" + digits[1:]
-        url = (
-            f"https://api.green-api.com/waInstance{self._green_instance}"
-            f"/sendMessage/{self._green_token}"
-        )
+        # Use instance-specific subdomain (e.g. 7107552876 → 7107.api.greenapi.com)
+        subdomain = self._green_instance[:4]
+        base = _load_secret("GREEN_API_URL") or f"https://{subdomain}.api.greenapi.com"
+        url = f"{base}/waInstance{self._green_instance}/sendMessage/{self._green_token}"
         try:
             r = requests.post(
                 url,
