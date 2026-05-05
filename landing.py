@@ -489,9 +489,9 @@ def page_form():
         phone = st.text_input("טלפון נייד", placeholder="050-1234567")
         teudat_zehut = st.text_input("תעודת זהות", placeholder="123456789", max_chars=9)
 
-        # Agent selector — only if not arriving via ?agent=CODE link
+        # Agent selector — only show when client arrives WITHOUT an agent link
         selected_agent_id = _agent["id"] if _agent else ""
-        if not _agent:
+        if not _agent_code:
             agents = _all_agents()
             if agents:
                 options = ["ללא סוכן (לקוח עצמאי)"] + [f"{a['full_name']}" for a in agents]
