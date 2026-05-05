@@ -220,64 +220,66 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] resolve_pending_codes {annex_code}: {e}")
             return 0
 
-    def upsert_master_annex(self, annex_code: str, annex_name: str, full_text: str, company_id: str = None, alias_codes: list = None) -> tuple[bool, str]:
-        """Add or update a nispaj in master_annexes. Saves alias_codes with same content. Returns (ok, annex_id)."""
+    def upsert_master_annex(self, annex_code: str, annex_name: str, full_text: str, company_id: str = None, alias_codes: list = None, version_year: int = None) -> tuple[bool, str]:
+        """Add or update a nispaj in master_annexes by (annex_code, version_year). Returns (ok, annex_id)."""
+        if version_year is None:
+            version_year = datetime.now().year
         try:
-            existing = (
-                self.client.table("master_annexes")
-                .select("id")
-                .eq("annex_code", annex_code)
-                .limit(1)
-                .execute()
-            )
-            data = {"annex_code": annex_code, "annex_name": annex_name, "full_text": full_text}
-            if company_id:
-                data["company_id"] = company_id
+            saved_id = self._upsert_single_annex(annex_code, annex_name, full_text, company_id, version_year)
+            if not saved_id:
+                return False, "שגיאה בהוספת הנספח"
+            self.resolve_pending_codes(annex_code, saved_id)
 
-            if existing.data:
-                annex_id = existing.data[0]["id"]
-                self.client.table("master_annexes").update(data).eq("id", annex_id).execute()
-            else:
-                res = self.client.table("master_annexes").insert(data).execute()
-                if not res.data:
-                    return False, "שגיאה בהוספת הנספח"
-                annex_id = res.data[0]["id"]
-
-            self.resolve_pending_codes(annex_code, annex_id)
-
-            # Save alias codes with same content
             for alias in (alias_codes or []):
                 alias = str(alias).strip()
                 if not alias or alias == annex_code:
                     continue
                 try:
-                    alias_existing = (
-                        self.client.table("master_annexes")
-                        .select("id")
-                        .eq("annex_code", alias)
-                        .limit(1)
-                        .execute()
-                    )
-                    alias_data = {"annex_code": alias, "annex_name": annex_name, "full_text": full_text}
-                    if company_id:
-                        alias_data["company_id"] = company_id
-                    if alias_existing.data:
-                        alias_id = alias_existing.data[0]["id"]
-                        self.client.table("master_annexes").update(alias_data).eq("id", alias_id).execute()
-                    else:
-                        alias_res = self.client.table("master_annexes").insert(alias_data).execute()
-                        if alias_res.data:
-                            alias_id = alias_res.data[0]["id"]
-                        else:
-                            continue
-                    self.resolve_pending_codes(alias, alias_id)
+                    alias_id = self._upsert_single_annex(alias, annex_name, full_text, company_id, version_year)
+                    if alias_id:
+                        self.resolve_pending_codes(alias, alias_id)
                 except Exception as e:
                     print(f"[InsuranceClientDB] upsert alias {alias}: {e}")
 
-            return True, annex_id
+            return True, saved_id
         except Exception as e:
             print(f"[InsuranceClientDB] upsert_master_annex {annex_code}: {e}")
             return False, str(e)
+
+    def _upsert_single_annex(self, annex_code: str, annex_name: str, full_text: str, company_id: str | None, version_year: int) -> str | None:
+        """Insert or update a single master_annexes row keyed by (annex_code, version_year)."""
+        data = {"annex_code": annex_code, "annex_name": annex_name, "full_text": full_text, "version_year": version_year}
+        if company_id:
+            data["company_id"] = company_id
+        existing = (
+            self.client.table("master_annexes")
+            .select("id")
+            .eq("annex_code", annex_code)
+            .eq("version_year", version_year)
+            .limit(1)
+            .execute()
+        )
+        if existing.data:
+            annex_id = existing.data[0]["id"]
+            self.client.table("master_annexes").update(data).eq("id", annex_id).execute()
+            return annex_id
+        else:
+            res = self.client.table("master_annexes").insert(data).execute()
+            return res.data[0]["id"] if res.data else None
+
+    def get_annex_versions(self, annex_code: str) -> list[int]:
+        """Return all saved years for a given annex_code, newest first."""
+        try:
+            res = (
+                self.client.table("master_annexes")
+                .select("version_year")
+                .eq("annex_code", annex_code)
+                .order("version_year", desc=True)
+                .execute()
+            )
+            return [r["version_year"] for r in res.data if r.get("version_year")]
+        except Exception:
+            return []
 
     def get_profiles_without_policies(self, agent_id: str = "") -> list[dict]:
         """Returns profiles with no linked user_policies, optionally filtered by agent."""
@@ -340,13 +342,14 @@ class InsuranceClientDB:
             result = []
             for row in res.data:
                 annex = row.get("master_annexes") or {}
-                # Fallback: if annex_id is null, look up by annex_code and auto-link
+                # Fallback: if annex_id is null, look up most recent version by annex_code
                 if not annex and row.get("annex_code"):
                     try:
                         master = (
                             self.client.table("master_annexes")
-                            .select("id, annex_code, annex_name, full_text, insurance_companies(name)")
+                            .select("id, annex_code, annex_name, full_text, version_year, insurance_companies(name)")
                             .eq("annex_code", row["annex_code"])
+                            .order("version_year", desc=True)
                             .limit(1)
                             .execute()
                         )

@@ -1064,6 +1064,12 @@ def _render_admin_content(agent: dict):
     with st.expander("➕ הוסף / עדכן נספח", expanded=False):
         nispaj_code = st.text_input("קוד נספח", placeholder="8713", key="nispaj_code")
         nispaj_name = st.text_input("שם נספח", placeholder="אבחנה מהירה", key="nispaj_name")
+        current_year = datetime.now().year
+        nispaj_year = st.selectbox("שנת תוקף", list(range(current_year, current_year - 6, -1)), key="nispaj_year")
+        if nispaj_code.strip():
+            existing_years = _db().get_annex_versions(nispaj_code.strip())
+            if existing_years:
+                st.caption(f"גרסאות קיימות: {' · '.join(str(y) for y in existing_years)}")
         nispaj_pdf  = st.file_uploader("PDF של הנספח", type=["pdf"], key="nispaj_pdf")
 
         if nispaj_pdf:
@@ -1086,10 +1092,10 @@ def _render_admin_content(agent: dict):
                         st.error("חובה להזין קוד נספח")
                     else:
                         alias_codes = _extract_related_codes(nispaj_text, code)
-                        ok, result = _db().upsert_master_annex(code, name, nispaj_text, alias_codes=alias_codes)
+                        ok, result = _db().upsert_master_annex(code, name, nispaj_text, alias_codes=alias_codes, version_year=nispaj_year)
                         if ok:
                             all_codes = [code] + alias_codes
-                            st.success(f"✅ נשמרו קודים: **{' · '.join(all_codes)}** — לקוחות עודכנו אוטומטית.")
+                            st.success(f"✅ נשמרו קודים: **{' · '.join(all_codes)}** ({nispaj_year}) — לקוחות עודכנו אוטומטית.")
                         else:
                             st.error(f"שגיאה: {result}")
             else:
