@@ -174,7 +174,7 @@ defaults = {
     "step": "choose",
     "reg_name": "", "reg_phone": "", "reg_user_id": "",
     "annex_count": 0,
-    "_otp": "", "_otp_exp": None,
+    "_otp": "", "_otp_exp": None, "_otp_sent": True,
     "admin_authed": False,
     "admin_client": None,
     "agent_registered_code": "",
@@ -297,7 +297,8 @@ def _send_otp(phone: str) -> str:
     code = InsuranceClientDB.generate_otp()
     st.session_state._otp = code
     st.session_state._otp_exp = datetime.now() + timedelta(minutes=10)
-    _db().send_otp(phone, code)
+    sent = _db().send_otp(phone, code)
+    st.session_state._otp_sent = sent
     return code
 
 
@@ -574,6 +575,13 @@ def page_verify(is_new: bool):
             "אימות מספר טלפון",
             f"שלחנו קוד בן 6 ספרות לוואטסאפ שלך ({st.session_state.reg_phone})",
         )
+
+        if not st.session_state.get("_otp_sent", True):
+            st.warning(
+                f"⚠️ WhatsApp לא מוגדר — קוד האימות שלך לבדיקה: "
+                f"**{st.session_state._otp}**",
+                icon=None,
+            )
 
         code = st.text_input("קוד אימות", placeholder="123456", max_chars=6)
         st.markdown("<br>", unsafe_allow_html=True)
