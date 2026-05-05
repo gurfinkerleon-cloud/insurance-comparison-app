@@ -532,7 +532,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://api.green-api.com/waInstance7107552876/sendMessage/942c55a20b694f30956967e278b5336f71aeef9d8b154577a8",
+        "url": "=https://7107.api.greenapi.com/waInstance7107552876/sendMessage/942c55a20b694f30956967e278b5336f71aeef9d8b154577a8",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
