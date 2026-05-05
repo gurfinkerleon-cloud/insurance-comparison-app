@@ -251,8 +251,17 @@ def _claude() -> Anthropic:
 def _extract_pdf_text(pdf_bytes: bytes) -> str:
     if not PDF_SUPPORT:
         return ""
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        return "\n".join(p.extract_text() or "" for p in pdf.pages)
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            parts = []
+            for p in pdf.pages:
+                try:
+                    parts.append(p.extract_text() or "")
+                except Exception:
+                    parts.append("")
+            return "\n".join(parts)
+    except Exception as e:
+        raise ValueError(f"לא ניתן לקרוא את קובץ ה-PDF: {e}")
 
 
 def _extract_annex_codes(text: str) -> list[str]:
@@ -507,7 +516,11 @@ def page_form():
         annex_codes: list[str] = []
         if uploaded and PDF_SUPPORT:
             with st.spinner("מנתח מפרט..."):
-                pdf_text = _extract_pdf_text(uploaded.read())
+                try:
+                    pdf_text = _extract_pdf_text(uploaded.read())
+                except ValueError as e:
+                    st.error(f"❌ {e}")
+                    pdf_text = ""
             if pdf_text.strip():
                 with st.spinner("מזהה נספחים..."):
                     annex_codes = _extract_annex_codes(pdf_text)
@@ -961,7 +974,11 @@ def _render_admin_content(agent: dict):
 
         if pdf_file:
             with st.spinner("מנתח PDF..."):
-                pdf_text = _extract_pdf_text(pdf_file.read())
+                try:
+                    pdf_text = _extract_pdf_text(pdf_file.read())
+                except ValueError as e:
+                    st.error(f"❌ {e}")
+                    pdf_text = ""
 
             if not pdf_text.strip():
                 st.error("לא ניתן לקרוא טקסט מהקובץ. ייתכן שהוא סרוק — נסה קובץ אחר.")
@@ -1022,7 +1039,11 @@ def _render_admin_content(agent: dict):
 
         if nispaj_pdf:
             with st.spinner("קורא PDF..."):
-                nispaj_text = _extract_pdf_text(nispaj_pdf.read())
+                try:
+                    nispaj_text = _extract_pdf_text(nispaj_pdf.read())
+                except ValueError as e:
+                    st.error(f"❌ {e}")
+                    nispaj_text = ""
             if nispaj_text.strip():
                 st.success(f"נקרא {len(nispaj_text)} תווים מהנספח")
                 if st.button("💾 שמור נספח במאגר", type="primary", key="save_nispaj"):
