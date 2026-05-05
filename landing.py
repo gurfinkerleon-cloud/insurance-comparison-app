@@ -27,7 +27,6 @@ st.set_page_config(page_title="BituachBot", page_icon="🛡️", layout="wide",
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
 *, html, body, [class*="css"] { font-family: 'Heebo', sans-serif !important; box-sizing: border-box; }
 #MainMenu, header, footer, [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
 .stApp > header { display: none !important; }
@@ -49,26 +48,18 @@ st.markdown("""
 [data-testid="stHorizontalBlock"] > div:last-child label {
   text-align: right !important; direction: rtl !important;
 }
-/* Fix Material Symbols icons rendering as text */
-[data-testid="stIconMaterial"] {
-  font-family: 'Material Symbols Sharp' !important;
-  font-style: normal !important; font-weight: normal !important;
-  font-size: 20px !important; line-height: 1 !important;
-  letter-spacing: normal !important; text-transform: none !important;
-  display: inline-block !important; white-space: nowrap !important;
-  word-wrap: normal !important; direction: ltr !important;
-  -webkit-font-smoothing: antialiased !important;
-}
-/* Expander RTL layout */
+/* Hide broken Material icon text in expanders, replace with CSS arrow */
+[data-testid="stIconMaterial"] { display: none !important; }
 [data-testid="stExpander"] details summary {
   direction: rtl !important; display: flex !important;
-  flex-direction: row-reverse !important; align-items: center !important;
-  justify-content: flex-end !important;
+  align-items: center !important; gap: 8px !important;
+  cursor: pointer !important;
 }
-[data-testid="stExpander"] details summary > div { flex: 1 !important; }
-[data-testid="stExpander"] details summary [data-testid="stIconMaterial"] {
-  margin-left: 0 !important; margin-right: 8px !important;
+[data-testid="stExpander"] details summary::after {
+  content: "▶"; color: #9CA3AF; font-size: 11px; flex-shrink: 0;
+  transition: transform 0.2s ease;
 }
+[data-testid="stExpander"] details[open] summary::after { content: "▼"; }
 .badge {
   display: inline-flex; align-items: center; gap: 8px;
   background: rgba(255,255,255,0.85); border: 1px solid rgba(22,179,100,0.15);
@@ -864,16 +855,9 @@ def _render_admin_content(agent: dict):
     base_url   = "https://bituachbot.streamlit.app"
     st.markdown(f'<div class="admin-header">🔐 BituachBot — ממשק ניהול | {agent_name}</div>', unsafe_allow_html=True)
 
-    # Quick-share links
-    with st.expander("🔗 קישורים לשיתוף עם לקוחות", expanded=False):
-        st.markdown(f"""
-<div style="direction:rtl">
-  <div style="background:#F0FDF4;border:1px solid #D1FAE5;border-radius:10px;padding:12px;margin-bottom:10px">
-    <div style="font-size:0.8rem;color:#16B364;font-weight:700;margin-bottom:4px">קישור רישום לקוחות</div>
-    <code style="font-size:0.85rem;color:#111827;word-break:break-all">{base_url}/?agent={agent_code}</code>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+    # Copyable client registration link
+    st.markdown('<div style="direction:rtl;font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:6px">🔗 קישור רישום לקוחות — שתף עם הלקוחות שלך</div>', unsafe_allow_html=True)
+    st.code(f"{base_url}/?agent={agent_code}", language=None)
 
     st.markdown("---")
     st.markdown("### העלאת פוליסה עבור לקוח קיים")
