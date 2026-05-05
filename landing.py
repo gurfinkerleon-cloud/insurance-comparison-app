@@ -138,6 +138,18 @@ label { font-size: 0.875rem !important; font-weight: 500 !important; color: #111
 }
 .stAlert { direction: rtl !important; text-align: right !important; border-radius: 12px !important; }
 .stAlert > div { direction: rtl !important; text-align: right !important; }
+/* Global RTL for all text content (admin page + everywhere) */
+.main .block-container p,
+.main .block-container h1, .main .block-container h2,
+.main .block-container h3, .main .block-container h4,
+.main .block-container li, .main .block-container label,
+.main .block-container .stMarkdown, .main .block-container caption {
+  text-align: right !important; direction: rtl !important;
+}
+[data-testid="stMarkdownContainer"] { text-align: right !important; direction: rtl !important; }
+[data-testid="stCaptionContainer"] { text-align: right !important; direction: rtl !important; }
+[data-testid="stCheckbox"] label { text-align: right !important; direction: rtl !important; }
+[data-testid="stSelectbox"] label { text-align: right !important; direction: rtl !important; }
 </style>
 """, unsafe_allow_html=True)
 
