@@ -846,6 +846,44 @@ def page_agent_dashboard():
         return
     _render_admin_content(agent)
     st.markdown("---")
+    with st.expander("🔧 בדיקת חיבור WhatsApp", expanded=False):
+        instance = _get_secret("GREEN_API_INSTANCE") or os.getenv("GREEN_API_INSTANCE", "")
+        token    = _get_secret("GREEN_API_TOKEN")    or os.getenv("GREEN_API_TOKEN", "")
+        inst_status = ("✅ " + instance[:4] + "****") if instance else "❌ לא מוגדר"
+        token_status = "✅ מוגדר" if token else "❌ לא מוגדר"
+        subdomain = instance[:4] if instance else "????"
+        built_url = f"https://{subdomain}.api.greenapi.com/waInstance{instance or '???'}/sendMessage/***"
+        st.markdown(f"""
+- **GREEN_API_INSTANCE**: `{inst_status}`
+- **GREEN_API_TOKEN**: `{token_status}`
+- **URL**: `{built_url}`
+""")
+        test_phone = st.text_input("טלפון לבדיקה", placeholder="0501234567", key="debug_wa_phone")
+        if st.button("📤 שלח הודעת בדיקה", key="debug_wa_btn"):
+            if not instance or not token:
+                st.error("חסרים credentials של Green API")
+            elif not test_phone.strip():
+                st.error("הזן מספר טלפון")
+            else:
+                digits = re.sub(r"\D", "", test_phone)
+                if digits.startswith("0"):
+                    digits = "972" + digits[1:]
+                url = f"https://{instance[:4]}.api.greenapi.com/waInstance{instance}/sendMessage/{token}"
+                st.code(f"POST {url}\nchatId: {digits}@c.us")
+                try:
+                    r = requests.post(
+                        url,
+                        json={"chatId": f"{digits}@c.us", "message": "🧪 BituachBot test"},
+                        timeout=10,
+                    )
+                    st.write(f"**Status:** `{r.status_code}`")
+                    st.code(r.text)
+                    if r.status_code == 200:
+                        st.success("✅ נשלח בהצלחה!")
+                    else:
+                        st.error("❌ שגיאה בשליחה")
+                except Exception as e:
+                    st.error(f"Exception: {e}")
     if st.button("← יציאה מממשק הניהול"):
         st.session_state.logged_in_agent = None
         st.session_state.admin_client = None
