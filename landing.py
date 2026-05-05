@@ -282,6 +282,17 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
     raise ValueError("לא ניתן לקרוא את קובץ ה-PDF. ייתכן שהוא סרוק או מוגן.")
 
 
+def _extract_related_codes(text: str, primary_code: str) -> list[str]:
+    """Find slash-separated annex codes in PDF text, e.g. '5420/5400' → ['5420', '5400']."""
+    found = set()
+    for match in re.finditer(r'\b(\d{4,6})(?:/(\d{4,6}))+\b', text):
+        codes = re.findall(r'\d{4,6}', match.group())
+        if primary_code in codes:
+            found.update(codes)
+    found.discard(primary_code)
+    return list(found)
+
+
 def _extract_annex_codes(text: str) -> list[str]:
     client = _claude()
     prompt = (
@@ -1064,15 +1075,21 @@ def _render_admin_content(agent: dict):
                     nispaj_text = ""
             if nispaj_text.strip():
                 st.success(f"נקרא {len(nispaj_text)} תווים מהנספח")
+                code = nispaj_code.strip()
+                if code:
+                    alias_codes = _extract_related_codes(nispaj_text, code)
+                    if alias_codes:
+                        st.info(f"🔗 זוהו קודים נוספים לאותו נספח: **{' · '.join(alias_codes)}** — יישמרו אוטומטית")
                 if st.button("💾 שמור נספח במאגר", type="primary", key="save_nispaj"):
-                    code = nispaj_code.strip()
                     name = nispaj_name.strip() or f"נספח {code}"
                     if not code:
                         st.error("חובה להזין קוד נספח")
                     else:
-                        ok, result = _db().upsert_master_annex(code, name, nispaj_text)
+                        alias_codes = _extract_related_codes(nispaj_text, code)
+                        ok, result = _db().upsert_master_annex(code, name, nispaj_text, alias_codes=alias_codes)
                         if ok:
-                            st.success(f"✅ נספח {code} נשמר! לקוחות עם קוד זה עודכנו אוטומטית.")
+                            all_codes = [code] + alias_codes
+                            st.success(f"✅ נשמרו קודים: **{' · '.join(all_codes)}** — לקוחות עודכנו אוטומטית.")
                         else:
                             st.error(f"שגיאה: {result}")
             else:

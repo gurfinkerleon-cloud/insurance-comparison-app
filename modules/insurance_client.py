@@ -220,8 +220,8 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] resolve_pending_codes {annex_code}: {e}")
             return 0
 
-    def upsert_master_annex(self, annex_code: str, annex_name: str, full_text: str, company_id: str = None) -> tuple[bool, str]:
-        """Add or update a nispaj in master_annexes. Returns (ok, annex_id)."""
+    def upsert_master_annex(self, annex_code: str, annex_name: str, full_text: str, company_id: str = None, alias_codes: list = None) -> tuple[bool, str]:
+        """Add or update a nispaj in master_annexes. Saves alias_codes with same content. Returns (ok, annex_id)."""
         try:
             existing = (
                 self.client.table("master_annexes")
@@ -243,7 +243,37 @@ class InsuranceClientDB:
                     return False, "שגיאה בהוספת הנספח"
                 annex_id = res.data[0]["id"]
 
-            updated = self.resolve_pending_codes(annex_code, annex_id)
+            self.resolve_pending_codes(annex_code, annex_id)
+
+            # Save alias codes with same content
+            for alias in (alias_codes or []):
+                alias = str(alias).strip()
+                if not alias or alias == annex_code:
+                    continue
+                try:
+                    alias_existing = (
+                        self.client.table("master_annexes")
+                        .select("id")
+                        .eq("annex_code", alias)
+                        .limit(1)
+                        .execute()
+                    )
+                    alias_data = {"annex_code": alias, "annex_name": annex_name, "full_text": full_text}
+                    if company_id:
+                        alias_data["company_id"] = company_id
+                    if alias_existing.data:
+                        alias_id = alias_existing.data[0]["id"]
+                        self.client.table("master_annexes").update(alias_data).eq("id", alias_id).execute()
+                    else:
+                        alias_res = self.client.table("master_annexes").insert(alias_data).execute()
+                        if alias_res.data:
+                            alias_id = alias_res.data[0]["id"]
+                        else:
+                            continue
+                    self.resolve_pending_codes(alias, alias_id)
+                except Exception as e:
+                    print(f"[InsuranceClientDB] upsert alias {alias}: {e}")
+
             return True, annex_id
         except Exception as e:
             print(f"[InsuranceClientDB] upsert_master_annex {annex_code}: {e}")
