@@ -310,6 +310,23 @@ class InsuranceClientDB:
             result = []
             for row in res.data:
                 annex = row.get("master_annexes") or {}
+                # Fallback: if annex_id is null, look up by annex_code and auto-link
+                if not annex and row.get("annex_code"):
+                    try:
+                        master = (
+                            self.client.table("master_annexes")
+                            .select("id, annex_code, annex_name, full_text, insurance_companies(name)")
+                            .eq("annex_code", row["annex_code"])
+                            .limit(1)
+                            .execute()
+                        )
+                        if master.data:
+                            annex = master.data[0]
+                            self.client.table("user_policies").update(
+                                {"annex_id": annex["id"]}
+                            ).eq("id", row["id"]).execute()
+                    except Exception:
+                        pass
                 code = annex.get("annex_code") or row.get("annex_code", "")
                 has_data = bool(annex.get("full_text"))
                 result.append({
@@ -317,7 +334,7 @@ class InsuranceClientDB:
                     "annex_name": annex.get("annex_name", f"נספח {code}"),
                     "company": (annex.get("insurance_companies") or {}).get("name", ""),
                     "has_data": has_data,
-                    "annex_id": row.get("annex_id"),
+                    "annex_id": row.get("annex_id") or annex.get("id"),
                 })
             return result
         except Exception as e:

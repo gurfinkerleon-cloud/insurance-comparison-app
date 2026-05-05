@@ -251,6 +251,7 @@ def _claude() -> Anthropic:
 def _extract_pdf_text(pdf_bytes: bytes) -> str:
     if not PDF_SUPPORT:
         return ""
+    # Try pdfplumber first, fall back to pypdf for complex PDFs
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             parts = []
@@ -259,9 +260,26 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
                     parts.append(p.extract_text() or "")
                 except Exception:
                     parts.append("")
-            return "\n".join(parts)
-    except Exception as e:
-        raise ValueError(f"לא ניתן לקרוא את קובץ ה-PDF: {e}")
+            text = "\n".join(parts)
+            if text.strip():
+                return text
+    except Exception:
+        pass
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        parts = []
+        for page in reader.pages:
+            try:
+                parts.append(page.extract_text() or "")
+            except Exception:
+                parts.append("")
+        text = "\n".join(parts)
+        if text.strip():
+            return text
+    except Exception:
+        pass
+    raise ValueError("לא ניתן לקרוא את קובץ ה-PDF. ייתכן שהוא סרוק או מוגן.")
 
 
 def _extract_annex_codes(text: str) -> list[str]:
