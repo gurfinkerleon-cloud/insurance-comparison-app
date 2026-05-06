@@ -59,8 +59,8 @@ class InsuranceClientDB:
         try:
             res = (
                 self.client.table("agents")
-                .select("id, agent_code, full_name, admin_password, email")
-                .eq("email", email.lower().strip())
+                .select("id, agent_code, full_name, admin_password, email, phone_number")
+                .ilike("email", email.strip())
                 .limit(1)
                 .execute()
             )
