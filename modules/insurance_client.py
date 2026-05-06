@@ -57,10 +57,12 @@ class InsuranceClientDB:
 
     def get_agent_by_email_and_password(self, email: str, password: str) -> dict | None:
         try:
+            clean_email = email.strip().lower()
+            # Fetch candidates case-insensitively using filter
             res = (
                 self.client.table("agents")
-                .select("id, agent_code, full_name, admin_password, email")
-                .eq("email", email.lower().strip())
+                .select("id, agent_code, full_name, admin_password, email, phone_number")
+                .filter("email", "ilike", clean_email)
                 .limit(1)
                 .execute()
             )
