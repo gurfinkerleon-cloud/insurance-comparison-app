@@ -57,10 +57,12 @@ class InsuranceClientDB:
 
     def get_agent_by_email_and_password(self, email: str, password: str) -> dict | None:
         try:
+            clean_email = email.strip().lower()
+            # Fetch candidates case-insensitively using filter
             res = (
                 self.client.table("agents")
                 .select("id, agent_code, full_name, admin_password, email, phone_number")
-                .ilike("email", email.strip())
+                .filter("email", "ilike", clean_email)
                 .limit(1)
                 .execute()
             )
@@ -71,6 +73,36 @@ class InsuranceClientDB:
         except Exception as e:
             print(f"[InsuranceClientDB] get_agent_by_email_and_password: {e}")
             return None
+
+    def get_agent_by_phone(self, phone: str) -> dict | None:
+        try:
+            res = (
+                self.client.table("agents")
+                .select("id, agent_code, full_name, admin_password, email, phone_number")
+                .eq("phone_number", phone)
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as e:
+            print(f"[InsuranceClientDB] get_agent_by_phone: {e}")
+            return None
+
+    def update_agent_phone(self, agent_id: str, phone: str) -> bool:
+        try:
+            self.client.table("agents").update({"phone_number": phone}).eq("id", agent_id).execute()
+            return True
+        except Exception as e:
+            print(f"[InsuranceClientDB] update_agent_phone: {e}")
+            return False
+
+    def update_agent_password(self, agent_id: str, new_password: str) -> bool:
+        try:
+            self.client.table("agents").update({"admin_password": new_password}).eq("id", agent_id).execute()
+            return True
+        except Exception as e:
+            print(f"[InsuranceClientDB] update_agent_password: {e}")
+            return False
 
     def get_all_agents(self) -> list[dict]:
         try:
