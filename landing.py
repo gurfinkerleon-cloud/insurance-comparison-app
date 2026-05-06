@@ -780,21 +780,42 @@ def page_agent_login():
     with right:
         _logo("כניסה כסוכן", "הזן את פרטי הגישה שלך")
 
-        email = st.text_input("אימייל", placeholder="israel@example.com")
-        password = st.text_input("סיסמה", type="password", placeholder="הסיסמה שלך")
+        login_method = st.radio("שיטת כניסה", ["אימייל וסיסמה", "טלפון + קוד וואטסאפ"],
+                                horizontal=True, label_visibility="collapsed")
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("כניסה", type="primary", use_container_width=True):
-            if not email.strip() or not password:
-                st.error("נא למלא אימייל וסיסמה.")
-            else:
-                agent = _db().get_agent_by_email_and_password(email.strip(), password)
-                if agent:
-                    st.session_state.logged_in_agent = agent
-                    st.session_state.step = "agent_dashboard"
-                    st.rerun()
+        if login_method == "אימייל וסיסמה":
+            email = st.text_input("אימייל", placeholder="israel@example.com")
+            password = st.text_input("סיסמה", type="password", placeholder="הסיסמה שלך")
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("כניסה", type="primary", use_container_width=True):
+                if not email.strip() or not password:
+                    st.error("נא למלא אימייל וסיסמה.")
                 else:
-                    st.error("האימייל או הסיסמה שגויים.")
+                    agent = _db().get_agent_by_email_and_password(email.strip(), password)
+                    if agent:
+                        st.session_state.logged_in_agent = agent
+                        st.session_state.step = "agent_dashboard"
+                        st.rerun()
+                    else:
+                        st.error("האימייל או הסיסמה שגויים.")
+        else:
+            phone = st.text_input("טלפון נייד", placeholder="050-1234567")
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("שלח קוד אימות", type="primary", use_container_width=True):
+                clean = phone.strip().replace("-", "").replace(" ", "")
+                if not re.match(r"^05\d{8}$", clean):
+                    st.error("מספר טלפון לא תקין.")
+                else:
+                    agent = _db().get_agent_by_phone(clean)
+                    if not agent:
+                        st.error("מספר טלפון לא נמצא. השתמש בכניסה עם אימייל.")
+                    else:
+                        st.session_state.reg_phone = clean
+                        st.session_state.reg_name = agent.get("full_name", "")
+                        st.session_state._agent_otp_id = agent.get("id")
+                        _send_otp(clean)
+                        st.session_state.step = "agent_verify_otp"
+                        st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
         col1, col2 = st.columns(2)
@@ -806,6 +827,43 @@ def page_agent_login():
             if st.button("שכחתי סיסמה"):
                 st.session_state.step = "agent_reset_password"
                 st.rerun()
+
+
+def page_agent_verify_otp():
+    left, right = st.columns([1, 1])
+    with left:
+        _hero()
+    with right:
+        _logo("אימות סוכן", f"שלחנו קוד לוואטסאפ שלך ({st.session_state.reg_phone})")
+
+        if not st.session_state.get("_otp_sent", True):
+            st.warning(f"⚠️ WhatsApp לא מוגדר — קוד: **{st.session_state._otp}**", icon=None)
+
+        code = st.text_input("קוד אימות", placeholder="123456", max_chars=6)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        if st.button("כנס לפאנל הניהול", type="primary", use_container_width=True):
+            if _otp_valid(code):
+                agent = _db().get_agent_by_phone(st.session_state.reg_phone)
+                if agent:
+                    st.session_state.logged_in_agent = agent
+                    st.session_state.step = "agent_dashboard"
+                    st.rerun()
+                else:
+                    st.error("שגיאה בטעינת נתוני הסוכן")
+            else:
+                st.error("קוד שגוי או שפג תוקפו.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("← חזרה"):
+                st.session_state.step = "agent_login"
+                st.rerun()
+        with col2:
+            if st.button("שלח קוד מחדש"):
+                _send_otp(st.session_state.reg_phone)
+                st.success("קוד חדש נשלח!")
 
 
 def page_agent_reset_password():
@@ -926,6 +984,36 @@ def page_agent_dashboard():
                         st.error("❌ שגיאה בשליחה")
                 except Exception as e:
                     st.error(f"Exception: {e}")
+    st.markdown("---")
+    with st.expander("⚙️ הגדרות חשבון", expanded=False):
+        agent = st.session_state.logged_in_agent or {}
+        st.markdown("**עדכון טלפון לכניסה בקוד וואטסאפ**")
+        new_phone = st.text_input("טלפון נייד", placeholder="050-1234567",
+                                  value=agent.get("phone_number") or "", key="agent_new_phone")
+        if st.button("💾 שמור טלפון", key="save_agent_phone"):
+            clean = new_phone.strip().replace("-", "").replace(" ", "")
+            if not re.match(r"^05\d{8}$", clean):
+                st.error("מספר טלפון לא תקין")
+            elif _db().update_agent_phone(agent["id"], clean):
+                st.session_state.logged_in_agent["phone_number"] = clean
+                st.success("✅ הטלפון עודכן!")
+            else:
+                st.error("שגיאה בעדכון")
+
+        st.markdown("---")
+        st.markdown("**שינוי סיסמה**")
+        new_pwd = st.text_input("סיסמה חדשה", type="password", placeholder="לפחות 6 תווים", key="agent_new_pwd")
+        new_pwd2 = st.text_input("אימות סיסמה", type="password", placeholder="חזור על הסיסמה", key="agent_new_pwd2")
+        if st.button("🔑 שנה סיסמה", key="save_agent_pwd"):
+            if len(new_pwd) < 6:
+                st.error("סיסמה חייבת להכיל לפחות 6 תווים")
+            elif new_pwd != new_pwd2:
+                st.error("הסיסמאות אינן תואמות")
+            elif _db().update_agent_password(agent["id"], new_pwd):
+                st.success("✅ הסיסמה עודכנה!")
+            else:
+                st.error("שגיאה בעדכון")
+
     if st.button("← יציאה מממשק הניהול"):
         st.session_state.logged_in_agent = None
         st.session_state.admin_client = None
@@ -1163,6 +1251,8 @@ else:
         page_login_choose()
     elif step == "agent_login":
         page_agent_login()
+    elif step == "agent_verify_otp":
+        page_agent_verify_otp()
     elif step == "agent_reset_password":
         page_agent_reset_password()
     elif step == "agent_register":
