@@ -179,6 +179,8 @@ defaults = {
     "admin_client": None,
     "agent_registered_code": "",
     "logged_in_agent": None,
+    "agent_bot_messages": [],
+    "agent_bot_client_id": "",
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -701,6 +703,17 @@ def page_dashboard():
   </div>
 </div>
 """, unsafe_allow_html=True)
+            with st.expander("✏️ עדכון פרטים אישיים", expanded=False):
+                upd_name = st.text_input("שם מלא", value=profile.get("full_name", ""), key="upd_name")
+                upd_tz = st.text_input("תעודת זהות", value=profile.get("teudat_zehut", ""), key="upd_tz")
+                if st.button("💾 שמור פרטים", key="save_profile"):
+                    if not upd_name.strip():
+                        st.error("שם מלא הוא שדה חובה")
+                    elif _db().update_profile(profile["id"], upd_name, upd_tz):
+                        st.success("✅ הפרטים עודכנו בהצלחה!")
+                        st.rerun()
+                    else:
+                        st.error("שגיאה בעדכון הפרטים")
 
         policies = _db().get_user_policies(st.session_state.reg_user_id)
         if policies:
@@ -987,6 +1000,7 @@ def page_agent_dashboard():
     st.markdown("---")
     with st.expander("⚙️ הגדרות חשבון", expanded=False):
         agent = st.session_state.logged_in_agent or {}
+
         st.markdown("**עדכון טלפון לכניסה בקוד וואטסאפ**")
         new_phone = st.text_input("טלפון נייד", placeholder="050-1234567",
                                   value=agent.get("phone_number") or "", key="agent_new_phone")
@@ -997,6 +1011,20 @@ def page_agent_dashboard():
             elif _db().update_agent_phone(agent["id"], clean):
                 st.session_state.logged_in_agent["phone_number"] = clean
                 st.success("✅ הטלפון עודכן!")
+            else:
+                st.error("שגיאה בעדכון")
+
+        st.markdown("---")
+        st.markdown("**עדכון אימייל**")
+        new_email = st.text_input("אימייל", placeholder="israel@example.com",
+                                  value=agent.get("email") or "", key="agent_new_email")
+        if st.button("💾 שמור אימייל", key="save_agent_email"):
+            clean_email = new_email.strip()
+            if not re.match(r"^[^@]+@[^@]+\.[^@]+$", clean_email):
+                st.error("כתובת אימייל לא תקינה")
+            elif _db().update_agent_email(agent["id"], clean_email):
+                st.session_state.logged_in_agent["email"] = clean_email.lower()
+                st.success("✅ האימייל עודכן!")
             else:
                 st.error("שגיאה בעדכון")
 
@@ -1120,6 +1148,77 @@ def _render_admin_content(agent: dict):
                             st.caption(f"נספחים שדולגו: {', '.join(skipped)}")
                         st.session_state.admin_client = None
                         st.rerun()
+
+    # ── AGENT BOT CHAT ─────────────────────────────────────────────────────────
+    if client:
+        st.markdown("---")
+        st.markdown("### 💬 שאל את הבוט עבור הלקוח")
+
+        client_id = client.get("id", "")
+        if st.session_state.get("agent_bot_client_id") != client_id:
+            st.session_state.agent_bot_client_id = client_id
+            st.session_state.agent_bot_messages = []
+
+        policies = _db().get_user_policies(client_id)
+        ready_policies = [p for p in policies if p.get("has_data") and p.get("full_text")]
+
+        if not ready_policies:
+            st.info("אין נספחים זמינים לבוט עבור לקוח זה — העלה PDF קודם.")
+        else:
+            st.caption(
+                f"בוט מבוסס על {len(ready_policies)} נספחים: "
+                + " · ".join(p["annex_code"] for p in ready_policies)
+            )
+
+            for msg in st.session_state.agent_bot_messages:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
+
+            user_q = st.chat_input(f"שאל שאלה לגבי {client.get('full_name', 'הלקוח')}...")
+            if user_q:
+                st.session_state.agent_bot_messages.append({"role": "user", "content": user_q})
+                with st.chat_message("user"):
+                    st.markdown(user_q)
+
+                system_lines = [
+                    "אתה מומחה ביטוח בריאות ישראלי. אתה עוזר לסוכן ביטוח לענות על שאלות לגבי פוליסת לקוח ספציפי.",
+                    f"פרטי הלקוח: {client.get('full_name', '')} | טלפון: {client.get('phone_number', '')}",
+                    "",
+                    "נספחי הלקוח:",
+                ]
+                for p in ready_policies:
+                    system_lines.append(
+                        f"\n--- נספח {p['annex_code']} ({p['annex_name']}"
+                        + (f", {p['company']}" if p.get("company") else "")
+                        + ") ---"
+                    )
+                    system_lines.append(p["full_text"][:3000])
+
+                system_lines += [
+                    "",
+                    "ענה בעברית. הסתמך על הנספחים. אם המידע לא קיים, ציין זאת בבירור.",
+                ]
+
+                history = [
+                    {"role": m["role"], "content": m["content"]}
+                    for m in st.session_state.agent_bot_messages
+                ]
+                with st.chat_message("assistant"):
+                    with st.spinner("חושב..."):
+                        resp = _claude().messages.create(
+                            model="claude-sonnet-4-6",
+                            max_tokens=1024,
+                            system="\n".join(system_lines),
+                            messages=history,
+                        )
+                        answer = resp.content[0].text
+                    st.markdown(answer)
+                st.session_state.agent_bot_messages.append({"role": "assistant", "content": answer})
+
+            if st.session_state.agent_bot_messages:
+                if st.button("🗑️ נקה שיחה", key="clear_bot_chat"):
+                    st.session_state.agent_bot_messages = []
+                    st.rerun()
 
     st.markdown("---")
     st.markdown("### לקוחות ללא פוליסה")

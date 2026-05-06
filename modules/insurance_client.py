@@ -104,6 +104,29 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] update_agent_password: {e}")
             return False
 
+    def update_agent_email(self, agent_id: str, email: str) -> bool:
+        try:
+            self.client.table("agents").update({"email": email.strip().lower()}).eq("id", agent_id).execute()
+            return True
+        except Exception as e:
+            print(f"[InsuranceClientDB] update_agent_email: {e}")
+            return False
+
+    def update_profile(self, user_id: str, full_name: str, teudat_zehut: str) -> bool:
+        try:
+            data: dict = {}
+            if full_name.strip():
+                data["full_name"] = full_name.strip()
+            if teudat_zehut.strip():
+                data["teudat_zehut"] = teudat_zehut.strip()
+            if not data:
+                return True
+            self.client.table("profiles").update(data).eq("id", user_id).execute()
+            return True
+        except Exception as e:
+            print(f"[InsuranceClientDB] update_profile: {e}")
+            return False
+
     def get_all_agents(self) -> list[dict]:
         try:
             res = self.client.table("agents").select("id, agent_code, full_name").execute()
@@ -400,6 +423,7 @@ class InsuranceClientDB:
                     "company": (annex.get("insurance_companies") or {}).get("name", ""),
                     "has_data": has_data,
                     "annex_id": row.get("annex_id") or annex.get("id"),
+                    "full_text": annex.get("full_text", ""),
                 })
             return result
         except Exception as e:
