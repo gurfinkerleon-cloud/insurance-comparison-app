@@ -127,6 +127,16 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] update_profile: {e}")
             return False
 
+    def delete_profile(self, user_id: str) -> bool:
+        """Delete a user's policies and profile (right to erasure)."""
+        try:
+            self.client.table("user_policies").delete().eq("user_id", user_id).execute()
+            self.client.table("profiles").delete().eq("id", user_id).execute()
+            return True
+        except Exception as e:
+            print(f"[InsuranceClientDB] delete_profile: {e}")
+            return False
+
     def get_all_agents(self) -> list[dict]:
         try:
             res = self.client.table("agents").select("id, agent_code, full_name").execute()

@@ -157,6 +157,7 @@ label { font-size: 0.875rem !important; font-weight: 500 !important; color: #111
 _params = st.query_params
 _agent_code = _params.get("agent", "").upper()
 _is_admin = _params.get("admin") == "1"
+_is_privacy = _params.get("privacy") == "1"
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _load_agent(code: str) -> dict | None:
@@ -560,6 +561,12 @@ def page_form():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
+        privacy_ok = st.checkbox(
+            "קראתי ואני מסכים/ה ל[מדיניות הפרטיות](/?privacy=1) ולתנאי השימוש, "
+            "כולל עיבוד נתוני הביטוח שלי באמצעות בינה מלאכותית לצורך מתן שירות.",
+            key="privacy_consent"
+        )
+
         if st.button("הירשמו — זה בחינם!", type="primary", use_container_width=True):
             errors = []
             clean_phone = phone.strip().replace("-", "").replace(" ", "")
@@ -570,6 +577,8 @@ def page_form():
                 errors.append("מספר טלפון לא תקין (חייב להתחיל ב-05 ולהיות בן 10 ספרות).")
             if not _validate_teudat_zehut(clean_tz):
                 errors.append("תעודת זהות לא תקינה.")
+            if not privacy_ok:
+                errors.append("יש לאשר את מדיניות הפרטיות ותנאי השימוש כדי להמשיך.")
             if errors:
                 for e in errors:
                     st.error(e)
@@ -742,6 +751,23 @@ def page_dashboard():
             _whatsapp_card(bot_num)
 
         st.markdown("<br>", unsafe_allow_html=True)
+
+        with st.expander("🗑️ מחיקת חשבון", expanded=False):
+            st.warning("פעולה זו תמחק את כל הנתונים שלך לצמיתות ואינה ניתנת לביטול.")
+            confirm_delete = st.checkbox("אני מבין/ה ורוצה למחוק את החשבון שלי", key="confirm_delete")
+            if st.button("מחק חשבון לצמיתות", type="primary", key="delete_account_btn"):
+                if not confirm_delete:
+                    st.error("יש לסמן את תיבת האישור קודם.")
+                else:
+                    user_id = st.session_state.get("reg_user_id", "")
+                    if user_id and _db().delete_profile(user_id):
+                        st.success("✅ החשבון נמחק בהצלחה.")
+                        for k, v in defaults.items():
+                            st.session_state[k] = v
+                        st.rerun()
+                    else:
+                        st.error("שגיאה במחיקת החשבון. נסה שוב או צור קשר עם הסוכן.")
+
         if st.button("← יציאה"):
             for k, v in defaults.items():
                 st.session_state[k] = v
@@ -1289,6 +1315,82 @@ def _render_admin_content(agent: dict):
                 st.error("לא ניתן לקרוא טקסט מהקובץ")
 
 
+# ── PRIVACY POLICY PAGE ────────────────────────────────────────────────────────
+
+def page_privacy():
+    st.markdown("""
+<style>
+.privacy-container { max-width: 760px; margin: 0 auto; direction: rtl; text-align: right; padding: 40px 24px; }
+.privacy-container h1 { font-size: 1.8rem; font-weight: 800; color: #111827; margin-bottom: 8px; }
+.privacy-container h2 { font-size: 1.1rem; font-weight: 700; color: #16B364; margin-top: 32px; margin-bottom: 10px; border-bottom: 2px solid #F0FDF4; padding-bottom: 6px; }
+.privacy-container p, .privacy-container li { font-size: 0.95rem; color: #374151; line-height: 1.85; }
+.privacy-container ul { padding-right: 20px; }
+.privacy-date { font-size: 0.82rem; color: #9CA3AF; margin-bottom: 28px; }
+</style>
+<div class="privacy-container">
+<h1>🛡️ מדיניות פרטיות — BituachBot</h1>
+<div class="privacy-date">עדכון אחרון: מאי 2026</div>
+
+<h2>1. מי אנחנו</h2>
+<p>BituachBot היא פלטפורמה דיגיטלית המיועדת לסיוע ללקוחות ביטוח בישראל להבין את תכני הפוליסות שלהם. השירות מופעל על ידי סוכנות ביטוח מורשית.</p>
+
+<h2>2. אילו מידע אנו אוספים</h2>
+<ul>
+  <li><strong>שם מלא</strong> — לצורך זיהוי וקשר אישי</li>
+  <li><strong>מספר טלפון נייד</strong> — לצורך אימות זהות ושליחת עדכונים</li>
+  <li><strong>תעודת זהות</strong> — לצורך אימות זהות ומניעת כפילויות</li>
+  <li><strong>מסמכי פוליסת ביטוח (PDF)</strong> — לצורך ניתוח הכיסויים ומתן מענה אישי</li>
+  <li><strong>שיחות עם הבוט</strong> — לצורך שיפור השירות ומתן מענה רציף</li>
+</ul>
+
+<h2>3. כיצד אנו משתמשים במידע</h2>
+<ul>
+  <li>הצגת תכני הפוליסה האישית שלך בפורמט קריא</li>
+  <li>מענה על שאלות הקשורות לכיסוי הביטוחי שלך</li>
+  <li>יצירת קשר עם הסוכן שלך בנושא הפוליסה</li>
+  <li>שיפור מתמיד של השירות</li>
+</ul>
+
+<h2>4. שיתוף מידע עם גורמים חיצוניים</h2>
+<p>המידע שלך מועבר לספקי שירות הבאים אך ורק לצורך מתן השירות:</p>
+<ul>
+  <li><strong>Supabase Inc. (ארה"ב)</strong> — אחסון המידע בצורה מאובטחת</li>
+  <li><strong>Anthropic PBC (ארה"ב)</strong> — עיבוד טקסט הפוליסה באמצעות בינה מלאכותית לצורך מענה על שאלותיך. <em>הערה: טקסט הפוליסה שלך נשלח לשרתי Anthropic לעיבוד.</em></li>
+  <li><strong>Green API</strong> — שליחת הודעות WhatsApp לאימות ועדכונים</li>
+  <li><strong>הסוכן שלך</strong> — רואה את פרטיך ואת הנספחים שלך לצורך סיוע</li>
+</ul>
+<p>אנו לא מוכרים, לא משכירים ולא מעבירים את המידע שלך לצדדים שלישיים למטרות שיווק.</p>
+
+<h2>5. אבטחת מידע</h2>
+<p>המידע שלך מאוחסן בצורה מוצפנת בשרתי Supabase. הגישה מוגבלת לצוות המורשה בלבד. אנו מיישמים אמצעי אבטחה סבירים בהתאם לתקנות הגנת הפרטיות (אבטחת מידע), תשע"ז-2017.</p>
+
+<h2>6. שמירת מידע</h2>
+<p>המידע שלך נשמר כל עוד חשבונך פעיל. אתה רשאי לבקש מחיקת חשבונך וכל המידע הקשור אליו בכל עת.</p>
+
+<h2>7. הזכויות שלך</h2>
+<p>בהתאם לחוק הגנת הפרטיות, תשמ"א-1981, יש לך זכות ל:</p>
+<ul>
+  <li>עיין במידע שנאסף עליך</li>
+  <li>תקן מידע שגוי</li>
+  <li>מחק את חשבונך ואת כל המידע שלך</li>
+  <li>בקש הסבר על אופן השימוש במידע שלך</li>
+</ul>
+<p>למימוש זכויות אלו: פנה דרך הבוט בוואטסאפ או צור קשר ישירות עם הסוכן שלך.</p>
+
+<h2>8. עדכונים למדיניות</h2>
+<p>אנו עשויים לעדכן מדיניות זו מעת לעת. עדכונים מהותיים יישלחו בהודעת וואטסאפ.</p>
+
+<h2>9. יצירת קשר</h2>
+<p>לכל שאלה בנושא פרטיות: פנה אל הסוכן שלך או שלח הודעת WhatsApp לבוט.</p>
+</div>
+""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("← חזרה"):
+        st.query_params.clear()
+        st.rerun()
+
+
 # ── ADMIN PAGE ─────────────────────────────────────────────────────────────────
 
 def page_admin():
@@ -1330,7 +1432,9 @@ def page_admin():
 
 
 # ── ROUTER ─────────────────────────────────────────────────────────────────────
-if _is_admin:
+if _is_privacy:
+    page_privacy()
+elif _is_admin:
     page_admin()
 else:
     step = st.session_state.step
