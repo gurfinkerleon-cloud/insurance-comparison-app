@@ -344,7 +344,7 @@
             {
               "keyName": "phone_number",
               "condition": "eq",
-              "keyValue": "={{ $json.phone_number }}"
+              "keyValue": "={{ $('Parse WhatsApp Input').first().json.phone_number }}"
             }
           ]
         }
@@ -408,7 +408,7 @@
         "matchType": "allFilters",
         "filters": {
           "conditions": [
-            { "keyName": "phone_number", "condition": "eq", "keyValue": "={{ $json.phone_number }}" }
+            { "keyName": "phone_number", "condition": "eq", "keyValue": "={{ $('Parse WhatsApp Input').first().json.phone_number }}" }
           ]
         }
       },
