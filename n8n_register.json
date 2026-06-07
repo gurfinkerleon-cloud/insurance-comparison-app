@@ -1,0 +1,333 @@
+{
+  "name": "BituachBot - Register from Web",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "register",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "id": "webhook-register",
+      "name": "Webhook",
+      "webhookId": "register"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $json.body;\nconst phone = (b.phone || '').replace(/\\D/g, '');\nconst waPhone = phone.startsWith('0') ? '972' + phone.slice(1) : phone;\nreturn [{ json: { full_name: b.full_name, phone: b.phone, clean_phone: phone, waPhone, teudat_zehut: b.teudat_zehut, pdf_url: b.pdf_url || null, has_pdf: !!b.pdf_url } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "id": "parse-input",
+      "name": "Parse Input"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "has-pdf",
+              "leftValue": "={{ $json.has_pdf }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 0],
+      "id": "if-pdf",
+      "name": "Has PDF?"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Parse Input').first().json.pdf_url }}",
+        "options": { "response": { "response": { "responseFormat": "file" } } }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, -150],
+      "id": "download-pdf",
+      "name": "Download PDF"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "={{ Object.keys($binary)[0] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [880, -150],
+      "id": "extract-text",
+      "name": "Extract Text"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }}",
+        "options": {
+          "systemMessage": "אתה מומחה לביטוח בריאות בישראל. חלץ מהטקסט את קודי הנספחים (מספרים בני 4-6 ספרות). החזר JSON בלבד: {\"annex_codes\": [\"8713\",\"6792\"]}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [1100, -150],
+      "id": "extract-codes",
+      "name": "Extract Annex Codes"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-5-20250929"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [1100, -300],
+      "id": "anthropic-model",
+      "name": "Anthropic Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "0AH2aKB0F6Xrj8LV",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $node['Extract Annex Codes'].json.output || '{}';\nconst clean = raw.replace(/```json|```/g, '').trim();\ntry {\n  const parsed = JSON.parse(clean);\n  return [{ json: { annex_codes: parsed.annex_codes || [] } }];\n} catch {\n  return [{ json: { annex_codes: [] } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -150],
+      "id": "parse-codes",
+      "name": "Parse Codes"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "master_annexes",
+        "filterType": "manual",
+        "matchType": "anyFilter",
+        "filters": {
+          "conditions": [
+            { "keyName": "annex_code", "condition": "in", "keyValue": "={{ $json.annex_codes.join(',') }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1540, -150],
+      "id": "check-annexes",
+      "name": "Check Annexes in DB",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsedCodes = $('Parse Codes').first().json.annex_codes || [];\nconst foundAnnexes = $input.all().map(i => i.json);\nconst foundCodes = foundAnnexes.map(a => a.annex_code);\nconst missingCodes = parsedCodes.filter(c => !foundCodes.includes(c));\nreturn [{ json: { annex_codes: parsedCodes, found_codes: foundCodes, missing_codes: missingCodes, all_found: missingCodes.length === 0, annex_ids: foundAnnexes.map(a => a.id) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, -150],
+      "id": "check-missing",
+      "name": "Check Missing"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT register_user_with_policies('{{ $('Parse Input').first().json.clean_phone }}', '{{ $('Parse Input').first().json.full_name }}', ARRAY[{{ $('Check Missing').first().json.found_codes.map(c => `'${c}'`).join(',') }}]::text[], '{{ $('Parse Input').first().json.teudat_zehut }}')"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1980, -150],
+      "id": "save-with-pdf",
+      "name": "Save User with PDF",
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT register_user_with_policies('{{ $('Parse Input').first().json.clean_phone }}', '{{ $('Parse Input').first().json.full_name }}', ARRAY[]::text[], '{{ $('Parse Input').first().json.teudat_zehut }}')"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [660, 100],
+      "id": "save-no-pdf",
+      "name": "Save User no PDF",
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Parse Input').first().json;\nconst missing = $('Check Missing').first().json;\nconst allFound = missing.all_found;\nlet clientMsg, adminMsg;\nif (allFound) {\n  clientMsg = `שלום ${input.full_name}! 🎉\\n\\nהאסיסטנט שלך ב-BituachBot מוכן!\\nאתה יכול לשאול אותו כל שאלה על הביטוח שלך.\\n\\nמה תרצה לדעת? 😊`;\n  adminMsg = `✅ לקוח חדש נרשם!\\nשם: ${input.full_name}\\nטלפון: ${input.phone}\\nנספחים: ${missing.found_codes.join(', ')}\\nסטטוס: מוכן לשימוש`;\n} else {\n  clientMsg = `שלום ${input.full_name}! 👋\\n\\nנרשמת בהצלחה ל-BituachBot!\\nכמעט מוכנים — חסרים לנו כמה נספחים (${missing.missing_codes.join(', ')}).\\nניצור איתך קשר ברגע שהכל מוכן! 😊`;\n  adminMsg = `⚠️ לקוח חדש — חסרים נספחים!\\nשם: ${input.full_name}\\nטלפון: ${input.phone}\\nנספחים קיימים: ${missing.found_codes.join(', ')}\\nחסרים: ${missing.missing_codes.join(', ')}`;\n}\nreturn [{ json: { clientMsg, adminMsg, waPhone: input.waPhone } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2200, -150],
+      "id": "build-msgs-pdf",
+      "name": "Build Messages PDF"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Parse Input').first().json;\nconst clientMsg = `שלום ${input.full_name}! 👋\\n\\nנרשמת בהצלחה ל-BituachBot! 🛡️\\n\\nשמנו לב שעדיין לא העלית את קובץ הפוליסה שלך.\\nבקרוב אחד מהצוות שלנו יצור איתך קשר כדי לעזור לך להעלות אותה.\\n\\nנדבר בקרוב! 😊`;\nconst adminMsg = `📋 לקוח חדש ללא פוליסה!\\nשם: ${input.full_name}\\nטלפון: ${input.phone}\\nת.ז.: ${input.teudat_zehut}\\nצריך עזרה בהעלאת הפוליסה.`;\nreturn [{ json: { clientMsg, adminMsg, waPhone: input.waPhone } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 100],
+      "id": "build-msgs-no-pdf",
+      "name": "Build Messages No PDF"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.green-api.com/waInstance{{ $env.GREEN_API_INSTANCE }}/sendMessage/{{ $env.GREEN_API_TOKEN }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chatId", "value": "={{ $json.waPhone }}@c.us" },
+            { "name": "message", "value": "={{ $json.clientMsg }}" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, -150],
+      "id": "wa-client-pdf",
+      "name": "WA to Client (PDF)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.green-api.com/waInstance{{ $env.GREEN_API_INSTANCE }}/sendMessage/{{ $env.GREEN_API_TOKEN }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chatId", "value": "={{ $env.ADMIN_WA_PHONE }}@c.us" },
+            { "name": "message", "value": "={{ $('Build Messages PDF').first().json.adminMsg }}" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, -50],
+      "id": "wa-admin-pdf",
+      "name": "WA to Admin (PDF)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.green-api.com/waInstance{{ $env.GREEN_API_INSTANCE }}/sendMessage/{{ $env.GREEN_API_TOKEN }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chatId", "value": "={{ $json.waPhone }}@c.us" },
+            { "name": "message", "value": "={{ $json.clientMsg }}" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 100],
+      "id": "wa-client-no-pdf",
+      "name": "WA to Client (No PDF)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.green-api.com/waInstance{{ $env.GREEN_API_INSTANCE }}/sendMessage/{{ $env.GREEN_API_TOKEN }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chatId", "value": "={{ $env.ADMIN_WA_PHONE }}@c.us" },
+            { "name": "message", "value": "={{ $('Build Messages No PDF').first().json.adminMsg }}" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 200],
+      "id": "wa-admin-no-pdf",
+      "name": "WA to Admin (No PDF)"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": true }"
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2640, -100],
+      "id": "respond-pdf",
+      "name": "Respond PDF"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": true }"
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1320, 150],
+      "id": "respond-no-pdf",
+      "name": "Respond No PDF"
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Parse Input", "type": "main", "index": 0 }]] },
+    "Parse Input": { "main": [[{ "node": "Has PDF?", "type": "main", "index": 0 }]] },
+    "Has PDF?": {
+      "main": [
+        [{ "node": "Download PDF", "type": "main", "index": 0 }],
+        [{ "node": "Save User no PDF", "type": "main", "index": 0 }]
+      ]
+    },
+    "Download PDF": { "main": [[{ "node": "Extract Text", "type": "main", "index": 0 }]] },
+    "Extract Text": { "main": [[{ "node": "Extract Annex Codes", "type": "main", "index": 0 }]] },
+    "Anthropic Model": { "ai_languageModel": [[{ "node": "Extract Annex Codes", "type": "ai_languageModel", "index": 0 }]] },
+    "Extract Annex Codes": { "main": [[{ "node": "Parse Codes", "type": "main", "index": 0 }]] },
+    "Parse Codes": { "main": [[{ "node": "Check Annexes in DB", "type": "main", "index": 0 }]] },
+    "Check Annexes in DB": { "main": [[{ "node": "Check Missing", "type": "main", "index": 0 }]] },
+    "Check Missing": { "main": [[{ "node": "Save User with PDF", "type": "main", "index": 0 }]] },
+    "Save User with PDF": { "main": [[{ "node": "Build Messages PDF", "type": "main", "index": 0 }]] },
+    "Build Messages PDF": { "main": [[{ "node": "WA to Client (PDF)", "type": "main", "index": 0 }]] },
+    "WA to Client (PDF)": { "main": [[{ "node": "WA to Admin (PDF)", "type": "main", "index": 0 }]] },
+    "WA to Admin (PDF)": { "main": [[{ "node": "Respond PDF", "type": "main", "index": 0 }]] },
+    "Save User no PDF": { "main": [[{ "node": "Build Messages No PDF", "type": "main", "index": 0 }]] },
+    "Build Messages No PDF": { "main": [[{ "node": "WA to Client (No PDF)", "type": "main", "index": 0 }]] },
+    "WA to Client (No PDF)": { "main": [[{ "node": "WA to Admin (No PDF)", "type": "main", "index": 0 }]] },
+    "WA to Admin (No PDF)": { "main": [[{ "node": "Respond No PDF", "type": "main", "index": 0 }]] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" }
+}

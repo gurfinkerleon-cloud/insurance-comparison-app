@@ -1,0 +1,124 @@
+{
+  "name": "BituachBot - Send OTP",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "send-otp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "id": "webhook-send-otp",
+      "name": "Webhook",
+      "webhookId": "send-otp"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "profiles",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "phone_number",
+              "condition": "eq",
+              "keyValue": "={{ $json.body.phone }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [220, 0],
+      "id": "check-profile",
+      "name": "Check Profile",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const phone = $('Webhook').first().json.body.phone;\nconst profile = $input.first().json;\nconst code = Math.floor(100000 + Math.random() * 900000).toString();\nconst expiresAt = Date.now() + 10 * 60 * 1000;\nconst digits = phone.replace(/\\D/g, '');\nconst waPhone = digits.startsWith('0') ? '972' + digits.slice(1) : digits;\nreturn [{ json: { phone, code, expiresAt, waPhone, profile, found: !!profile.id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "id": "gen-otp",
+      "name": "Generate OTP"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "tableId": "verification_codes",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "phone", "fieldValue": "={{ $json.phone }}" },
+            { "fieldId": "code", "fieldValue": "={{ $json.code }}" },
+            { "fieldId": "expires_at", "fieldValue": "={{ $json.expiresAt }}" },
+            { "fieldId": "used", "fieldValue": false }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [660, 0],
+      "id": "save-otp",
+      "name": "Save OTP",
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.green-api.com/waInstance{{ $env.GREEN_API_INSTANCE }}/sendMessage/{{ $env.GREEN_API_TOKEN }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chatId", "value": "={{ $('Generate OTP').first().json.waPhone }}@c.us" },
+            { "name": "message", "value": "=קוד האימות שלך ל-BituachBot הוא:\n\n*{{ $('Generate OTP').first().json.code }}*\n\nתקף ל-10 דקות. אל תשתף אותו עם אף אחד." }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0],
+      "id": "send-wa",
+      "name": "Send WhatsApp OTP"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true }) }}"
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1100, 0],
+      "id": "respond",
+      "name": "Respond"
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Check Profile", "type": "main", "index": 0 }]] },
+    "Check Profile": { "main": [[{ "node": "Generate OTP", "type": "main", "index": 0 }]] },
+    "Generate OTP": { "main": [[{ "node": "Save OTP", "type": "main", "index": 0 }]] },
+    "Save OTP": { "main": [[{ "node": "Send WhatsApp OTP", "type": "main", "index": 0 }]] },
+    "Send WhatsApp OTP": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" }
+}

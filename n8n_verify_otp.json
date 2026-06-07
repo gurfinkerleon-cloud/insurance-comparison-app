@@ -1,0 +1,172 @@
+{
+  "name": "BituachBot - Verify OTP",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "verify-otp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "id": "webhook-verify",
+      "name": "Webhook",
+      "webhookId": "verify-otp"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "verification_codes",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "phone", "condition": "eq", "keyValue": "={{ $json.body.phone }}" },
+            { "keyName": "used", "condition": "eq", "keyValue": false }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [220, 0],
+      "id": "get-otp",
+      "name": "Get OTP",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $('Webhook').first().json.body;\nconst otpRow = $input.first().json;\nconst valid = otpRow.code === body.code && Date.now() < Number(otpRow.expires_at);\nreturn [{ json: { valid, phone: body.phone } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "id": "check-code",
+      "name": "Check Code"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "valid-check",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [660, 0],
+      "id": "if-valid",
+      "name": "IF Valid"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "verification_codes",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "phone", "condition": "eq", "keyValue": "={{ $('Check Code').first().json.phone }}" }
+          ]
+        },
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "used", "fieldValue": true }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [880, -100],
+      "id": "mark-used",
+      "name": "Mark OTP Used",
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "profiles",
+        "returnAll": false,
+        "limit": 1,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            { "keyName": "phone_number", "condition": "eq", "keyValue": "={{ $('Check Code').first().json.phone }}" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1100, -100],
+      "id": "get-profile",
+      "name": "Get Profile",
+      "credentials": {
+        "supabaseApi": {
+          "id": "NJPl0jtQQasqPtql",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, user: $json }) }}"
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1320, -100],
+      "id": "respond-ok",
+      "name": "Respond OK"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": false, \"error\": \"invalid_code\" }"
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [880, 100],
+      "id": "respond-fail",
+      "name": "Respond Fail"
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Get OTP", "type": "main", "index": 0 }]] },
+    "Get OTP": { "main": [[{ "node": "Check Code", "type": "main", "index": 0 }]] },
+    "Check Code": { "main": [[{ "node": "IF Valid", "type": "main", "index": 0 }]] },
+    "IF Valid": {
+      "main": [
+        [{ "node": "Mark OTP Used", "type": "main", "index": 0 }],
+        [{ "node": "Respond Fail", "type": "main", "index": 0 }]
+      ]
+    },
+    "Mark OTP Used": { "main": [[{ "node": "Get Profile", "type": "main", "index": 0 }]] },
+    "Get Profile": { "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" }
+}
