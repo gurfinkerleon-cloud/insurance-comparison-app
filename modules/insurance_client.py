@@ -420,6 +420,47 @@ class InsuranceClientDB:
             res = self.client.table("master_annexes").insert(data).execute()
             return res.data[0]["id"] if res.data else None
 
+    def has_annex(self, annex_code: str) -> bool:
+        try:
+            res = self.client.table("master_annexes").select("id").eq("annex_code", annex_code).limit(1).execute()
+            return bool(res.data)
+        except Exception:
+            return False
+
+    def find_company_id(self, name: str) -> str | None:
+        """Match an insurer name from a document to insurance_companies (never creates rows)."""
+        key = re.sub(r'["״\'׳]', "", (name or "")).strip()
+        if not key:
+            return None
+        try:
+            rows = self.client.table("insurance_companies").select("id, name").execute().data or []
+        except Exception:
+            return None
+        for r in rows:
+            n = re.sub(r'["״\'׳]', "", (r.get("name") or "")).strip()
+            if n and (n in key or key in n):
+                return r["id"]
+        return None
+
+    def add_annex_document(self, codes: list, annex_name: str, full_text: str, version_year: int = None,
+                           company: str = "", overwrite: bool = True) -> tuple[list[str], list[str]]:
+        """Put one נספח document in the library under every code it covers (e.g. plan 5986 + chapter 6650).
+        overwrite=False (client uploads) only fills codes the library doesn't have yet.
+        Returns (saved_codes, skipped_codes)."""
+        codes = [c for c in dict.fromkeys(str(c).strip() for c in (codes or [])) if re.fullmatch(r"\d{4,6}", c)]
+        if not codes or not (full_text or "").strip():
+            return [], codes
+        skipped = [] if overwrite else [c for c in codes if self.has_annex(c)]
+        todo = [c for c in codes if c not in skipped]
+        if not todo:
+            return [], skipped
+        company_id = self.find_company_id(company) if company else None
+        ok, _ = self.upsert_master_annex(
+            todo[0], (annex_name or "").strip() or f"נספח {todo[0]}", full_text,
+            company_id=company_id, alias_codes=todo[1:], version_year=version_year,
+        )
+        return (todo, skipped) if ok else ([], skipped + todo)
+
     def get_annex_versions(self, annex_code: str) -> list[int]:
         """Return all saved years for a given annex_code, newest first."""
         try:
@@ -711,6 +752,13 @@ class InsuranceClientDB:
             docs.append({"path": f"{user_id}/{name}", "name": self._decode_filename(fname) if fname else name, "uploaded_by": who, "uploaded_at": when})
         return docs
 
+    def download_client_document(self, path: str) -> bytes | None:
+        try:
+            return self.client.storage.from_(self.DOCS_BUCKET).download(path)
+        except Exception as e:
+            print(f"[InsuranceClientDB] download_client_document: {e}")
+            return None
+
     def delete_client_documents(self, user_id: str) -> None:
         paths = [d["path"] for d in self.list_client_documents(user_id)]
         if not paths:
@@ -825,7 +873,8 @@ class InsuranceClientDB:
         ]
         return self._whatsapp(agent["phone_number"], "\n".join(msg))
 
-    def notify_agent_client_upload(self, agent_id: str, user_id: str, new_codes: list[str]) -> bool:
+    def notify_agent_client_upload(self, agent_id: str, user_id: str, new_codes: list[str],
+                                   library_codes: list[str] = None) -> bool:
         """WhatsApp the agent when a client uploads a new document themselves."""
         agent = self.get_agent_by_id(agent_id)
         if not agent or not agent.get("phone_number"):
@@ -838,6 +887,10 @@ class InsuranceClientDB:
             "",
             f"👤 {status['full_name']} ({status['phone_number']})",
             f"🆕 קודים שזוהו: {', '.join(new_codes) if new_codes else 'לא זוהו קודי נספחים'}",
+        ]
+        if library_codes:
+            msg.append(f"📚 המסמך הוא נספח ונוסף למאגר: {', '.join(library_codes)} — כדאי לוודא שזה הנוסח הנכון")
+        msg += [
             "",
             *self._client_summary_lines(status["ready"], status["pending"], status["doc_count"]),
         ]
