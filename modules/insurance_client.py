@@ -2,20 +2,52 @@
 InsuranceClientDB — Supabase client for BituachBot landing page.
 
 Tables used:
-  agents           (id, agent_code, full_name, admin_password, email)
+  agents           (id, agent_code, full_name, admin_password [pbkdf2 hash], email)
   profiles         (id, phone_number, full_name, teudat_zehut, agent_id)
   master_annexes   (id, annex_code, annex_name, company_id, full_text)
   user_policies    (id, user_id, annex_id)
   insurance_companies (id, name)
 """
 
+import hashlib
+import hmac
 import os
 import random
 import re
+import secrets
 from datetime import datetime, timedelta
 
 import requests
 from supabase import create_client, Client
+
+
+# ── PASSWORD HASHING ─────────────────────────────────────────────────────────
+_PBKDF2_ITER = 200_000
+
+
+def hash_password(password: str) -> str:
+    """Return 'pbkdf2$<iterations>$<salt_hex>$<hash_hex>'."""
+    salt = secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, _PBKDF2_ITER)
+    return f"pbkdf2${_PBKDF2_ITER}${salt.hex()}${dk.hex()}"
+
+
+def is_hashed(stored: str | None) -> bool:
+    return bool(stored) and stored.startswith("pbkdf2$")
+
+
+def verify_password(password: str, stored: str | None) -> bool:
+    """Check a password against a stored value (hashed, or legacy plain text)."""
+    if not stored or not password:
+        return False
+    if not is_hashed(stored):
+        return hmac.compare_digest(password, stored)
+    try:
+        _, iters, salt_hex, hash_hex = stored.split("$")
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt_hex), int(iters))
+        return hmac.compare_digest(dk.hex(), hash_hex)
+    except Exception:
+        return False
 
 
 def _load_secret(key: str) -> str | None:
@@ -69,7 +101,13 @@ class InsuranceClientDB:
             if not res.data:
                 return None
             agent = res.data[0]
-            return agent if agent.get("admin_password") == password else None
+            stored = agent.get("admin_password")
+            if not verify_password(password, stored):
+                return None
+            if not is_hashed(stored):
+                # Legacy plain-text password: upgrade it to a hash on successful login
+                self.update_agent_password(agent["id"], password)
+            return agent
         except Exception as e:
             print(f"[InsuranceClientDB] get_agent_by_email_and_password: {e}")
             return None
@@ -98,7 +136,7 @@ class InsuranceClientDB:
 
     def update_agent_password(self, agent_id: str, new_password: str) -> bool:
         try:
-            self.client.table("agents").update({"admin_password": new_password}).eq("id", agent_id).execute()
+            self.client.table("agents").update({"admin_password": hash_password(new_password)}).eq("id", agent_id).execute()
             return True
         except Exception as e:
             print(f"[InsuranceClientDB] update_agent_password: {e}")
@@ -151,7 +189,7 @@ class InsuranceClientDB:
             if agent["full_name"].strip().lower() != full_name.strip().lower():
                 return False
             self.client.table("agents").update(
-                {"admin_password": new_password}
+                {"admin_password": hash_password(new_password)}
             ).eq("id", agent["id"]).execute()
             return True
         except Exception as e:
@@ -166,7 +204,7 @@ class InsuranceClientDB:
             res = self.client.table("agents").insert({
                 "agent_code": agent_code.upper(),
                 "full_name": full_name,
-                "admin_password": admin_password,
+                "admin_password": hash_password(admin_password),
                 "email": email,
             }).execute()
             return (True, res.data[0]["id"]) if res.data else (False, "שגיאה ביצירת הסוכן")

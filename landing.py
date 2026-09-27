@@ -11,7 +11,7 @@ import streamlit as st
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-from modules.insurance_client import InsuranceClientDB
+from modules.insurance_client import InsuranceClientDB, is_hashed, verify_password
 
 try:
     import pdfplumber
@@ -1312,7 +1312,9 @@ def page_admin():
         correct_password = _agent.get("admin_password", "")
         pwd = st.text_input("סיסמה", type="password", placeholder="הכנס סיסמה")
         if st.button("כניסה", type="primary"):
-            if correct_password and pwd == correct_password:
+            if verify_password(pwd, correct_password):
+                if not is_hashed(correct_password) and _agent.get("id"):
+                    _db().update_agent_password(_agent["id"], pwd)
                 st.session_state.admin_authed = True
                 st.rerun()
             else:
