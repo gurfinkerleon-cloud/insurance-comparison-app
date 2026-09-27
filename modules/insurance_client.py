@@ -9,6 +9,7 @@ Tables used:
   insurance_companies (id, name)
 """
 
+import base64
 import hashlib
 import hmac
 import os
@@ -77,7 +78,7 @@ class InsuranceClientDB:
         try:
             res = (
                 self.client.table("agents")
-                .select("id, agent_code, full_name, admin_password, email")
+                .select("id, agent_code, full_name, admin_password, email, phone_number")
                 .eq("agent_code", code.upper())
                 .limit(1)
                 .execute()
@@ -85,6 +86,22 @@ class InsuranceClientDB:
             return res.data[0] if res.data else None
         except Exception as e:
             print(f"[InsuranceClientDB] get_agent_by_code: {e}")
+            return None
+
+    def get_agent_by_id(self, agent_id: str) -> dict | None:
+        if not agent_id:
+            return None
+        try:
+            res = (
+                self.client.table("agents")
+                .select("id, agent_code, full_name, email, phone_number")
+                .eq("id", agent_id)
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as e:
+            print(f"[InsuranceClientDB] get_agent_by_id: {e}")
             return None
 
     def get_agent_by_email_and_password(self, email: str, password: str) -> dict | None:
@@ -196,7 +213,7 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] reset_agent_password: {e}")
             return False
 
-    def create_agent(self, agent_code: str, full_name: str, admin_password: str, email: str = "") -> tuple[bool, str]:
+    def create_agent(self, agent_code: str, full_name: str, admin_password: str, email: str = "", phone: str = "") -> tuple[bool, str]:
         try:
             existing = self.get_agent_by_code(agent_code)
             if existing:
@@ -206,6 +223,7 @@ class InsuranceClientDB:
                 "full_name": full_name,
                 "admin_password": hash_password(admin_password),
                 "email": email,
+                **({"phone_number": phone} if phone else {}),
             }).execute()
             return (True, res.data[0]["id"]) if res.data else (False, "שגיאה ביצירת הסוכן")
         except Exception as e:
@@ -468,6 +486,197 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] get_user_policies: {e}")
             return []
 
+    # ── AGENT DASHBOARD DATA ─────────────────────────────────────────────────
+
+    def get_agent_clients(self, agent_id: str = "") -> list[dict]:
+        """
+        All clients of an agent (all clients when agent_id is empty), each with
+        a status summary: ready / pending annex codes and uploaded documents.
+        """
+        try:
+            q = self.client.table("profiles").select("id, full_name, phone_number, teudat_zehut, created_at, agent_id")
+            if agent_id:
+                q = q.eq("agent_id", agent_id)
+            profiles = q.order("created_at", desc=True).execute().data or []
+            if not profiles:
+                return []
+            ids = [p["id"] for p in profiles]
+            rows = (
+                self.client.table("user_policies")
+                .select("user_id, annex_code, annex_id")
+                .in_("user_id", ids)
+                .execute()
+                .data
+                or []
+            )
+            self._link_known_codes(rows)
+            by_user: dict[str, dict] = {pid: {"ready": [], "pending": []} for pid in ids}
+            for r in rows:
+                bucket = "ready" if r.get("annex_id") else "pending"
+                by_user.setdefault(r["user_id"], {"ready": [], "pending": []})[bucket].append(r.get("annex_code", ""))
+            result = []
+            for p in profiles:
+                st_ = by_user.get(p["id"], {"ready": [], "pending": []})
+                docs = self.list_client_documents(p["id"])
+                p = dict(p)
+                p["ready_codes"] = sorted(set(st_["ready"]))
+                p["pending_codes"] = sorted(set(st_["pending"]))
+                p["doc_count"] = len(docs)
+                p["status"] = self.client_status(p["ready_codes"], p["pending_codes"], len(docs))
+                result.append(p)
+            return result
+        except Exception as e:
+            print(f"[InsuranceClientDB] get_agent_clients: {e}")
+            return []
+
+    @staticmethod
+    def client_status(ready: list, pending: list, doc_count: int) -> str:
+        """One of: 'ready', 'partial', 'waiting_annex', 'empty'."""
+        if not ready and not pending:
+            return "empty"
+        if ready and not pending:
+            return "ready"
+        if ready and pending:
+            return "partial"
+        return "waiting_annex"
+
+    def _link_known_codes(self, rows: list[dict]) -> None:
+        """For rows with annex_id NULL whose code now exists in master_annexes, link them (in place)."""
+        missing = sorted({r["annex_code"] for r in rows if not r.get("annex_id") and r.get("annex_code")})
+        if not missing:
+            return
+        try:
+            masters = (
+                self.client.table("master_annexes")
+                .select("id, annex_code, version_year")
+                .in_("annex_code", missing)
+                .order("version_year", desc=True)
+                .execute()
+                .data
+                or []
+            )
+            newest: dict[str, str] = {}
+            for m in masters:
+                newest.setdefault(m["annex_code"], m["id"])
+            for code, annex_id in newest.items():
+                self.resolve_pending_codes(code, annex_id)
+            for r in rows:
+                if not r.get("annex_id") and r.get("annex_code") in newest:
+                    r["annex_id"] = newest[r["annex_code"]]
+        except Exception as e:
+            print(f"[InsuranceClientDB] _link_known_codes: {e}")
+
+    def get_pending_annex_codes(self, agent_id: str = "") -> list[dict]:
+        """Annex codes that clients have but that are missing from master_annexes.
+        Returns [{annex_code, clients: [full_name, ...]}] sorted by number of clients."""
+        try:
+            q = self.client.table("profiles").select("id, full_name")
+            if agent_id:
+                q = q.eq("agent_id", agent_id)
+            profiles = q.execute().data or []
+            if not profiles:
+                return []
+            names = {p["id"]: p.get("full_name", "") for p in profiles}
+            rows = (
+                self.client.table("user_policies")
+                .select("user_id, annex_code, annex_id")
+                .in_("user_id", list(names))
+                .is_("annex_id", "null")
+                .execute()
+                .data
+                or []
+            )
+            self._link_known_codes(rows)
+            pending: dict[str, set] = {}
+            for r in rows:
+                if not r.get("annex_id") and r.get("annex_code"):
+                    pending.setdefault(r["annex_code"], set()).add(names.get(r["user_id"], ""))
+            return sorted(
+                ({"annex_code": c, "clients": sorted(n)} for c, n in pending.items()),
+                key=lambda x: (-len(x["clients"]), x["annex_code"]),
+            )
+        except Exception as e:
+            print(f"[InsuranceClientDB] get_pending_annex_codes: {e}")
+            return []
+
+    # ── CLIENT DOCUMENTS (Supabase Storage) ─────────────────────────────────
+
+    DOCS_BUCKET = "client-documents"
+    _bucket_checked = False
+
+    def _ensure_docs_bucket(self) -> None:
+        if InsuranceClientDB._bucket_checked:
+            return
+        try:
+            self.client.storage.get_bucket(self.DOCS_BUCKET)
+        except Exception:
+            try:
+                self.client.storage.create_bucket(self.DOCS_BUCKET, options={"public": False})
+            except Exception as e:
+                print(f"[InsuranceClientDB] create bucket {self.DOCS_BUCKET}: {e}")
+        InsuranceClientDB._bucket_checked = True
+
+    @staticmethod
+    def _encode_filename(name: str) -> str:
+        """Storage keys must be ASCII — keep the original (e.g. Hebrew) name as base64url."""
+        name = (name or "document.pdf")[-120:]
+        return base64.urlsafe_b64encode(name.encode()).decode().rstrip("=")
+
+    @staticmethod
+    def _decode_filename(enc: str) -> str:
+        try:
+            return base64.urlsafe_b64decode(enc + "=" * (-len(enc) % 4)).decode()
+        except Exception:
+            return enc
+
+    def upload_client_document(self, user_id: str, filename: str, data: bytes, uploaded_by: str = "client") -> bool:
+        """Store the original file under client-documents/<user_id>/. uploaded_by: 'client' | 'agent' | 'bot'."""
+        if not user_id or not data:
+            return False
+        self._ensure_docs_bucket()
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        path = f"{user_id}/{ts}__{uploaded_by}__{self._encode_filename(filename)}"
+        try:
+            self.client.storage.from_(self.DOCS_BUCKET).upload(
+                path, data, {"content-type": "application/pdf", "upsert": "true"}
+            )
+            return True
+        except Exception as e:
+            print(f"[InsuranceClientDB] upload_client_document: {e}")
+            return False
+
+    def list_client_documents(self, user_id: str) -> list[dict]:
+        """[{path, name, uploaded_by, uploaded_at}] newest first."""
+        if not user_id:
+            return []
+        try:
+            items = self.client.storage.from_(self.DOCS_BUCKET).list(
+                user_id, {"limit": 100, "sortBy": {"column": "name", "order": "desc"}}
+            ) or []
+        except Exception:
+            return []
+        docs = []
+        for it in items:
+            name = it.get("name", "")
+            if not name or name.startswith("."):
+                continue
+            parts = name.split("__", 2)
+            ts, who, fname = (parts + ["", "", ""])[:3] if len(parts) == 3 else ("", "", name)
+            try:
+                when = datetime.strptime(ts, "%Y%m%d-%H%M%S").strftime("%d/%m/%Y %H:%M")
+            except ValueError:
+                when = ""
+            docs.append({"path": f"{user_id}/{name}", "name": self._decode_filename(fname) if fname else name, "uploaded_by": who, "uploaded_at": when})
+        return docs
+
+    def document_url(self, path: str, expires_in: int = 3600) -> str | None:
+        try:
+            res = self.client.storage.from_(self.DOCS_BUCKET).create_signed_url(path, expires_in)
+            return res.get("signedURL") or res.get("signedUrl")
+        except Exception as e:
+            print(f"[InsuranceClientDB] document_url: {e}")
+            return None
+
     # ── OTP ───────────────────────────────────────────────────────────────────
 
     @staticmethod
@@ -526,3 +735,79 @@ class InsuranceClientDB:
                 f'• "כמה ההשתתפות העצמית ב-MRI?"'
             ),
         )
+
+
+    # ── AGENT NOTIFICATIONS ─────────────────────────────────────────────────
+
+    def _client_summary_lines(self, ready: list, pending: list, doc_count: int) -> list[str]:
+        lines = []
+        if ready:
+            lines.append(f"✅ נספחים מוכנים ({len(ready)}): {', '.join(ready)}")
+        if pending:
+            lines.append(f"⏳ נספחים שחסרים במאגר ({len(pending)}): {', '.join(pending)} — יש להעלות אותם בפאנל")
+        lines.append(f"📄 מסמכים שהועלו: {doc_count}")
+        if not ready and not pending:
+            lines.append("\n⚠️ הלקוח לא העלה פוליסה — צור איתו קשר כדי לקבל את קובץ הפוליסה.")
+        elif pending and not ready:
+            lines.append("\n⚠️ הבוט עדיין לא יכול לענות ללקוח — חסרים הנספחים במאגר.")
+        elif pending:
+            lines.append("\nℹ️ הבוט עונה על חלק מהנספחים. השלם את הנספחים החסרים.")
+        else:
+            lines.append("\n👍 הכל מוכן — הבוט יכול לענות ללקוח.")
+        return lines
+
+    def notify_agent_new_client(self, agent_id: str, user_id: str) -> bool:
+        """WhatsApp the agent: a new client registered through their link + what is missing."""
+        agent = self.get_agent_by_id(agent_id)
+        if not agent or not agent.get("phone_number"):
+            return False
+        status = self._client_snapshot(user_id)
+        if not status:
+            return False
+        msg = [
+            "BituachBot 🛡️ — לקוח חדש נרשם!",
+            "",
+            f"👤 {status['full_name']}",
+            f"📱 {status['phone_number']}",
+            "",
+            *self._client_summary_lines(status["ready"], status["pending"], status["doc_count"]),
+        ]
+        return self._whatsapp(agent["phone_number"], "\n".join(msg))
+
+    def notify_agent_client_upload(self, agent_id: str, user_id: str, new_codes: list[str]) -> bool:
+        """WhatsApp the agent when a client uploads a new document themselves."""
+        agent = self.get_agent_by_id(agent_id)
+        if not agent or not agent.get("phone_number"):
+            return False
+        status = self._client_snapshot(user_id)
+        if not status:
+            return False
+        msg = [
+            "BituachBot 🛡️ — הלקוח העלה מסמך חדש",
+            "",
+            f"👤 {status['full_name']} ({status['phone_number']})",
+            f"🆕 קודים שזוהו: {', '.join(new_codes) if new_codes else 'לא זוהו קודי נספחים'}",
+            "",
+            *self._client_summary_lines(status["ready"], status["pending"], status["doc_count"]),
+        ]
+        return self._whatsapp(agent["phone_number"], "\n".join(msg))
+
+    def _client_snapshot(self, user_id: str) -> dict | None:
+        try:
+            prof = self.client.table("profiles").select("id, full_name, phone_number").eq("id", user_id).limit(1).execute()
+            if not prof.data:
+                return None
+            rows = self.client.table("user_policies").select("user_id, annex_code, annex_id").eq("user_id", user_id).execute().data or []
+            self._link_known_codes(rows)
+            ready = sorted({r["annex_code"] for r in rows if r.get("annex_id")})
+            pending = sorted({r["annex_code"] for r in rows if not r.get("annex_id")})
+            return {
+                "full_name": prof.data[0].get("full_name", ""),
+                "phone_number": prof.data[0].get("phone_number", ""),
+                "ready": ready,
+                "pending": pending,
+                "doc_count": len(self.list_client_documents(user_id)),
+            }
+        except Exception as e:
+            print(f"[InsuranceClientDB] _client_snapshot: {e}")
+            return None

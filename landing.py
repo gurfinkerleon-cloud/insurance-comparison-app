@@ -158,16 +158,6 @@ _params = st.query_params
 _agent_code = _params.get("agent", "").upper()
 _is_admin = _params.get("admin") == "1"
 
-@st.cache_data(ttl=300, show_spinner=False)
-def _load_agent(code: str) -> dict | None:
-    if not code:
-        return None
-    try:
-        return _db().get_agent_by_code(code)
-    except Exception:
-        return None
-
-_agent = _load_agent(_agent_code) if _agent_code else None
 
 # ── SESSION STATE ──────────────────────────────────────────────────────────────
 defaults = {
@@ -198,6 +188,18 @@ BENEFITS = [
 @st.cache_resource(show_spinner=False)
 def _db() -> InsuranceClientDB:
     return InsuranceClientDB()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _load_agent(code: str) -> dict | None:
+    if not code:
+        return None
+    try:
+        return _db().get_agent_by_code(code)
+    except Exception:
+        return None
+
+_agent = _load_agent(_agent_code) if _agent_code else None
 
 
 def _get_secret(key: str) -> str:
@@ -392,6 +394,46 @@ def _logo(title: str, sub: str = ""):
 
 # ── PAGES ──────────────────────────────────────────────────────────────────────
 
+STATUS_LABELS = {
+    "ready": ("✅", "מוכן — הבוט עונה"),
+    "partial": ("🟡", "חלק מהנספחים חסרים"),
+    "waiting_annex": ("⏳", "הנספחים חסרים במאגר"),
+    "empty": ("❌", "לא הועלתה פוליסה"),
+}
+
+
+def _render_documents(user_id: str, key_prefix: str):
+    """List a client's uploaded PDFs with download links."""
+    docs = _db().list_client_documents(user_id)
+    if not docs:
+        st.caption("לא הועלו מסמכים עדיין.")
+        return
+    who_label = {"client": "הלקוח", "agent": "הסוכן", "bot": "וואטסאפ"}
+    for i, d in enumerate(docs):
+        url = _db().document_url(d["path"])
+        who = who_label.get(d.get("uploaded_by", ""), "")
+        meta = " · ".join(x for x in [d.get("uploaded_at", ""), who] if x)
+        if url:
+            st.markdown(f"📄 [{d['name']}]({url}) <span style='color:#9CA3AF;font-size:0.8rem'>{meta}</span>",
+                        unsafe_allow_html=True)
+        else:
+            st.markdown(f"📄 {d['name']} <span style='color:#9CA3AF;font-size:0.8rem'>{meta}</span>",
+                        unsafe_allow_html=True)
+
+
+def _process_policy_pdf(pdf_bytes: bytes) -> tuple[str, list[str]]:
+    """Extract text and annex codes from a policy PDF. Returns (text, codes)."""
+    try:
+        text = _extract_pdf_text(pdf_bytes)
+    except ValueError as e:
+        st.error(f"❌ {e}")
+        return "", []
+    if not text.strip():
+        return "", []
+    with st.spinner("מזהה נספחים..."):
+        return text, _extract_annex_codes(text)
+
+
 def page_choose():
     """Landing: choose client or agent registration."""
     left, right = st.columns([1, 1])
@@ -443,6 +485,7 @@ def page_agent_register():
 
         full_name = st.text_input("שם מלא", placeholder="ישראל ישראלי")
         email = st.text_input("אימייל", placeholder="israel@example.com")
+        agent_phone = st.text_input("טלפון נייד (לקבלת התראות בוואטסאפ)", placeholder="050-1234567")
         password = st.text_input("סיסמת ניהול", type="password", placeholder="בחר סיסמה חזקה")
         password2 = st.text_input("אימות סיסמה", type="password", placeholder="חזור על הסיסמה")
 
@@ -453,6 +496,11 @@ def page_agent_register():
                 errors.append("נא להזין שם מלא.")
             if not email.strip():
                 errors.append("נא להזין אימייל.")
+            clean_agent_phone = agent_phone.strip().replace("-", "").replace(" ", "")
+            if not re.match(r"^05\d{8}$", clean_agent_phone):
+                errors.append("מספר טלפון לא תקין (חייב להתחיל ב-05 ולהיות בן 10 ספרות).")
+            elif _db().get_agent_by_phone(clean_agent_phone):
+                errors.append("מספר הטלפון כבר רשום לסוכן אחר.")
             if not password or len(password) < 6:
                 errors.append("סיסמה חייבת להכיל לפחות 6 תווים.")
             if password != password2:
@@ -463,7 +511,8 @@ def page_agent_register():
             else:
                 for _ in range(5):
                     code = _auto_agent_code(full_name.strip(), email.strip())
-                    ok, result = _db().create_agent(code, full_name.strip(), password, email.strip())
+                    ok, result = _db().create_agent(code, full_name.strip(), password, email.strip(),
+                                                    clean_agent_phone)
                     if ok:
                         st.session_state.agent_registered_code = code
                         st.session_state.step = "agent_success"
@@ -545,10 +594,12 @@ def page_form():
         uploaded = st.file_uploader("העלאת קובץ PDF (רשות)", type=["pdf"])
 
         annex_codes: list[str] = []
+        pdf_bytes: bytes = b""
         if uploaded and PDF_SUPPORT:
+            pdf_bytes = uploaded.getvalue()
             with st.spinner("מנתח מפרט..."):
                 try:
-                    pdf_text = _extract_pdf_text(uploaded.read())
+                    pdf_text = _extract_pdf_text(pdf_bytes)
                 except ValueError as e:
                     st.error(f"❌ {e}")
                     pdf_text = ""
@@ -583,6 +634,10 @@ def page_form():
                     st.session_state.reg_phone = clean_phone
                     st.session_state.reg_user_id = result
                     st.session_state.annex_count = len(annex_codes)
+                    if pdf_bytes:
+                        db.upload_client_document(result, uploaded.name, pdf_bytes, "client")
+                    if selected_agent_id:
+                        db.notify_agent_new_client(selected_agent_id, result)
                     _send_otp(clean_phone)
                     if annex_codes:
                         st.session_state.step = "verify_new"
@@ -735,7 +790,29 @@ def page_dashboard():
   <div class="company-name">מידע בעיבוד — בקרוב</div>
 </div>""", unsafe_allow_html=True)
         else:
-            st.info("לא נמצאו נספחים — הנציג שלנו ייצור איתך קשר בקרוב.")
+            st.info("לא נמצאו נספחים — העלה את קובץ הפוליסה כאן למטה, או שהסוכן שלך יעשה זאת עבורך.")
+
+        st.markdown('<div class="section-title">📤 העלאת מסמכים</div>', unsafe_allow_html=True)
+        st.caption("פוליסה, נספחים או כל מסמך ביטוח — נזהה את הנספחים אוטומטית.")
+        client_pdf = st.file_uploader("בחר קובץ PDF", type=["pdf"], key="client_upload_pdf")
+        if client_pdf and st.button("⬆️ העלה מסמך", type="primary", use_container_width=True, key="client_upload_btn"):
+            data = client_pdf.getvalue()
+            _, codes = _process_policy_pdf(data)
+            uid = st.session_state.reg_user_id
+            _db().upload_client_document(uid, client_pdf.name, data, "client")
+            linked = 0
+            if codes:
+                linked, _ = _db().link_annex_codes(uid, codes)
+            if profile and profile.get("agent_id"):
+                _db().notify_agent_client_upload(profile["agent_id"], uid, codes)
+            if codes:
+                st.success(f"✅ המסמך נשמר. זוהו {len(codes)} נספחים ({linked} חדשים): {' · '.join(codes)}")
+            else:
+                st.success("✅ המסמך נשמר. לא זוהו בו קודי נספחים — הסוכן שלך יעבור עליו.")
+            st.rerun()
+
+        with st.expander("📁 המסמכים שלי", expanded=False):
+            _render_documents(st.session_state.reg_user_id, "client_docs")
 
         bot_num = _bot_whatsapp_number()
         if bot_num:
@@ -1075,8 +1152,58 @@ def _render_admin_content(agent: dict):
     st.markdown('<div style="direction:rtl;font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:6px">🔗 קישור רישום לקוחות — שתף עם הלקוחות שלך</div>', unsafe_allow_html=True)
     st.code(f"{base_url}/?agent={agent_code}", language=None)
 
+    if agent_id and not agent.get("phone_number"):
+        st.warning("📱 לא הוגדר טלפון — לא תקבל התראות וואטסאפ על לקוחות חדשים. הוסף טלפון ב'הגדרות חשבון' למטה.")
+
+    # ── MY CLIENTS ─────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("### העלאת פוליסה עבור לקוח קיים")
+    clients = _db().get_agent_clients(agent_id)
+    st.markdown(f"### 👥 הלקוחות שלי ({len(clients)})")
+    if not clients:
+        st.info("עדיין אין לקוחות. שתף את הקישור למעלה כדי שלקוחות יירשמו דרכך.")
+    else:
+        counts = {k: sum(1 for c in clients if c["status"] == k) for k in STATUS_LABELS}
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("✅ מוכנים", counts["ready"])
+        m2.metric("🟡 חלקי", counts["partial"])
+        m3.metric("⏳ חסר נספח במאגר", counts["waiting_annex"])
+        m4.metric("❌ בלי פוליסה", counts["empty"])
+
+        status_filter = st.selectbox(
+            "סינון", ["הכל"] + [f"{v[0]} {v[1]}" for v in STATUS_LABELS.values()], key="clients_filter"
+        )
+        search = st.text_input("חיפוש לפי שם או טלפון", key="clients_search", placeholder="שם / 05...")
+        shown = clients
+        if status_filter != "הכל":
+            wanted = [k for k, v in STATUS_LABELS.items() if f"{v[0]} {v[1]}" == status_filter][0]
+            shown = [c for c in shown if c["status"] == wanted]
+        if search.strip():
+            q = search.strip().replace("-", "")
+            shown = [c for c in shown if q in (c.get("full_name") or "") or q in (c.get("phone_number") or "")]
+
+        for c in shown:
+            icon, label = STATUS_LABELS[c["status"]]
+            col_a, col_b = st.columns([4, 1])
+            with col_a:
+                details = []
+                if c["ready_codes"]:
+                    details.append(f"✅ {len(c['ready_codes'])} נספחים")
+                if c["pending_codes"]:
+                    details.append(f"⏳ חסרים: {', '.join(c['pending_codes'])}")
+                details.append(f"📄 {c['doc_count']} מסמכים")
+                st.markdown(
+                    f"{icon} **{c.get('full_name','')}** — {c.get('phone_number','')} "
+                    f"<span style='color:#9CA3AF;font-size:0.82rem'>(נרשם {(c.get('created_at') or '')[:10]})</span><br>"
+                    f"<span style='font-size:0.85rem;color:#4B5563'>{label} · {' · '.join(details)}</span>",
+                    unsafe_allow_html=True,
+                )
+            with col_b:
+                if st.button("פתח", key=f"open_{c['id']}", use_container_width=True):
+                    st.session_state.admin_client = c
+                    st.rerun()
+
+    st.markdown("---")
+    st.markdown("### חיפוש לקוח לפי טלפון")
 
     phone_input = st.text_input("חפש לקוח לפי טלפון", placeholder="0501234567")
     if st.button("חפש לקוח"):
@@ -1106,6 +1233,9 @@ def _render_admin_content(agent: dict):
 </div>
 """, unsafe_allow_html=True)
 
+        with st.expander("📁 מסמכים של הלקוח", expanded=False):
+            _render_documents(client["id"], "agent_docs")
+
         existing = _db().get_user_policies(client["id"])
         if existing:
             st.markdown(f"**נספחים קיימים ({len(existing)})**")
@@ -1118,9 +1248,10 @@ def _render_admin_content(agent: dict):
         pdf_file = st.file_uploader("בחר קובץ PDF", type=["pdf"], key="admin_pdf")
 
         if pdf_file:
+            admin_pdf_bytes = pdf_file.getvalue()
             with st.spinner("מנתח PDF..."):
                 try:
-                    pdf_text = _extract_pdf_text(pdf_file.read())
+                    pdf_text = _extract_pdf_text(admin_pdf_bytes)
                 except ValueError as e:
                     st.error(f"❌ {e}")
                     pdf_text = ""
@@ -1133,10 +1264,16 @@ def _render_admin_content(agent: dict):
 
                 if not annex_codes:
                     st.warning("לא זוהו קודי נספחים בקובץ.")
+                    if st.button("💾 שמור את הקובץ בתיק הלקוח בכל זאת", key="save_doc_only"):
+                        if _db().upload_client_document(client["id"], pdf_file.name, admin_pdf_bytes, "agent"):
+                            st.success("✅ הקובץ נשמר בתיק הלקוח")
+                        else:
+                            st.error("שגיאה בשמירת הקובץ")
                 else:
                     st.info(f"זוהו {len(annex_codes)} נספחים: **{' · '.join(annex_codes)}**")
 
                     if st.button("✅ קשר נספחים ללקוח", type="primary"):
+                        _db().upload_client_document(client["id"], pdf_file.name, admin_pdf_bytes, "agent")
                         linked, skipped = _db().link_annex_codes(client["id"], annex_codes)
                         if linked > 0:
                             st.success(f"✅ קושרו {linked} נספחים חדשים בהצלחה!")
@@ -1221,28 +1358,20 @@ def _render_admin_content(agent: dict):
                     st.rerun()
 
     st.markdown("---")
-    st.markdown("### לקוחות ללא פוליסה")
-    if st.button("🔄 רענן רשימה"):
-        st.rerun()
-
-    pending_clients = _db().get_profiles_without_policies(agent_id)
-    if not pending_clients:
-        st.success("✅ כל הלקוחות כבר מקושרים לפוליסה")
+    st.markdown("### 📌 נספחים שחסרים במאגר")
+    st.caption("קודים שיש ללקוחות שלך אבל עדיין לא הועלו למאגר — עד שתעלה אותם, הבוט לא יכול לענות עליהם.")
+    pending_codes = _db().get_pending_annex_codes(agent_id)
+    if not pending_codes:
+        st.success("✅ אין נספחים חסרים")
     else:
-        st.warning(f"⚠️ {len(pending_clients)} לקוחות ללא פוליסה")
-        for c in pending_clients:
-            created = c.get("created_at", "")[:10]
-            col_a, col_b = st.columns([3, 1])
-            with col_a:
-                st.markdown(
-                    f"**{c.get('full_name','')}** — {c.get('phone_number','')} "
-                    f"<span style='color:#9CA3AF;font-size:0.82rem'>(נרשם {created})</span>",
-                    unsafe_allow_html=True,
-                )
-            with col_b:
-                if st.button("העלה פוליסה", key=f"sel_{c['id']}"):
-                    st.session_state.admin_client = c
-                    st.rerun()
+        for item in pending_codes:
+            names = item["clients"]
+            st.markdown(
+                f"- **{item['annex_code']}** — {len(names)} לקוחות: "
+                f"<span style='color:#6B7280'>{', '.join(names[:5])}{' ...' if len(names) > 5 else ''}</span>",
+                unsafe_allow_html=True,
+            )
+        st.caption("העלה אותם ב'הוסף / עדכן נספח' למטה — הלקוחות יתעדכנו אוטומטית.")
 
     st.markdown("---")
     st.markdown("### הוספת / עדכון נספח במאגר")
