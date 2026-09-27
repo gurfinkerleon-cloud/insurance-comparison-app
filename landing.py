@@ -1,13 +1,18 @@
 """BituachBot – Landing Page & Signup"""
 
+import base64
+import hashlib
+import hmac
 import io
 import json
 import os
 import re
+import time
 from datetime import datetime, timedelta
 
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -212,6 +217,100 @@ def _get_secret(key: str) -> str:
 
 def _bot_whatsapp_number() -> str:
     return _get_secret("BOT_WHATSAPP_NUMBER") or os.getenv("BOT_WHATSAPP_NUMBER", "")
+
+
+# ── PERSISTENT LOGIN (signed cookie) ─────────────────────────────────────────
+SESSION_COOKIE = "bb_session"
+SESSION_DAYS = 7
+
+
+def _session_secret() -> bytes:
+    secret = _get_secret("SESSION_SECRET") or os.getenv("SESSION_SECRET", "")
+    if not secret:
+        base = _get_secret("SUPABASE_KEY") or os.getenv("SUPABASE_KEY", "")
+        secret = hashlib.sha256(("bituachbot-session:" + base).encode()).hexdigest()
+    return secret.encode()
+
+
+def _make_session_token(role: str, user_id: str) -> str:
+    exp = int(time.time()) + SESSION_DAYS * 86400
+    payload = f"{role}|{user_id}|{exp}"
+    sig = hmac.new(_session_secret(), payload.encode(), hashlib.sha256).hexdigest()[:40]
+    return base64.urlsafe_b64encode(f"{payload}|{sig}".encode()).decode().rstrip("=")
+
+
+def _read_session_token(token: str) -> tuple[str, str] | None:
+    try:
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode()
+        role, user_id, exp, sig = raw.split("|")
+        payload = f"{role}|{user_id}|{exp}"
+        good = hmac.new(_session_secret(), payload.encode(), hashlib.sha256).hexdigest()[:40]
+        if not hmac.compare_digest(sig, good) or int(exp) < time.time():
+            return None
+        return role, user_id
+    except Exception:
+        return None
+
+
+def _remember_login(role: str, user_id: str):
+    """role: 'a' = agent, 'c' = client. The cookie is written on the next render."""
+    if user_id:
+        st.session_state["_cookie_op"] = ("set", _make_session_token(role, user_id))
+        st.session_state["_logged_out"] = False
+
+
+def _forget_login():
+    st.session_state["_cookie_op"] = ("clear", "")
+    st.session_state["_logged_out"] = True
+
+
+def _flush_cookie_op():
+    op = st.session_state.pop("_cookie_op", None)
+    if not op:
+        return
+    action, token = op
+    if action == "set":
+        cookie = f"{SESSION_COOKIE}={token}; path=/; max-age={SESSION_DAYS * 86400}; SameSite=Lax; Secure"
+    else:
+        cookie = f"{SESSION_COOKIE}=; path=/; max-age=0; SameSite=Lax; Secure"
+    components.html(
+        "<script>"
+        f"try {{ window.parent.document.cookie = {json.dumps(cookie)}; }} catch (e) {{}}"
+        f"try {{ document.cookie = {json.dumps(cookie)}; }} catch (e) {{}}"
+        "</script>",
+        height=0,
+    )
+
+
+def _restore_session():
+    """On a fresh page load, log the agent/client back in from the cookie."""
+    if st.session_state.get("_session_checked"):
+        return
+    st.session_state["_session_checked"] = True
+    if st.session_state.get("_logged_out") or st.session_state.step != "choose":
+        return
+    try:
+        cookies = st.context.cookies
+        token = cookies.get(SESSION_COOKIE) if cookies else None
+    except Exception:
+        token = None
+    parsed = _read_session_token(token) if token else None
+    if not parsed:
+        return
+    role, user_id = parsed
+    if role == "a":
+        agent = _db().get_agent_by_id(user_id)
+        if agent:
+            st.session_state.logged_in_agent = agent
+            _remember_login("a", st.session_state.logged_in_agent.get("id", ""))
+            st.session_state.step = "agent_dashboard"
+    elif role == "c":
+        profile = _db().get_profile_by_id(user_id)
+        if profile:
+            st.session_state.reg_user_id = profile["id"]
+            st.session_state.reg_phone = profile.get("phone_number", "")
+            st.session_state.reg_name = profile.get("full_name", "")
+            st.session_state.step = "dashboard"
 
 
 def _whatsapp_card(phone: str):
@@ -600,6 +699,7 @@ def page_agent_success():
             agent = _db().get_agent_by_code(code)
             if agent:
                 st.session_state.logged_in_agent = agent
+                _remember_login("a", st.session_state.logged_in_agent.get("id", ""))
                 st.session_state.step = "agent_dashboard"
                 st.rerun()
             else:
@@ -685,11 +785,9 @@ def page_form():
                     if selected_agent_id:
                         db.notify_agent_new_client(selected_agent_id, result)
                     _send_otp(clean_phone)
-                    if annex_codes:
-                        st.session_state.step = "verify_new"
-                    else:
+                    if not annex_codes:
                         db.send_no_pdf_notice(clean_phone, full_name.strip())
-                        st.session_state.step = "pending"
+                    st.session_state.step = "verify_new"
                     st.rerun()
                 elif result == "already_registered":
                     st.warning("מספר הטלפון כבר רשום. השתמש באפשרות 'כבר נרשמת'.")
@@ -733,12 +831,13 @@ def page_verify(is_new: bool):
 
         if st.button("אמת וכנס", type="primary", use_container_width=True):
             if _otp_valid(code):
-                if is_new:
+                if is_new and st.session_state.annex_count:
                     _db().send_ready(
                         st.session_state.reg_phone,
                         st.session_state.reg_name,
                         st.session_state.annex_count,
                     )
+                _remember_login("c", st.session_state.reg_user_id)
                 st.session_state.step = "dashboard"
                 st.rerun()
             else:
@@ -792,8 +891,10 @@ def page_dashboard():
     with right:
         _logo(f"שלום, {st.session_state.reg_name}! 👋")
 
-        profile = _db().get_profile_by_phone(st.session_state.reg_phone)
+        profile = (_db().get_profile_by_id(st.session_state.reg_user_id)
+                   or _db().get_profile_by_phone(st.session_state.reg_phone))
         if profile:
+            st.session_state.reg_user_id = profile["id"]
             st.markdown(f"""
 <div class="profile-box">
   <div style="font-weight:600;font-size:1rem;margin-bottom:8px">פרטי חשבון</div>
@@ -815,6 +916,76 @@ def page_dashboard():
                         st.rerun()
                     else:
                         st.error("שגיאה בעדכון הפרטים")
+
+                st.markdown("---")
+                st.markdown("**📱 החלפת מספר טלפון**")
+                pending_phone = st.session_state.get("_new_phone", "")
+                if not pending_phone:
+                    new_phone = st.text_input("מספר חדש", placeholder="050-1234567", key="client_new_phone")
+                    if st.button("שלח קוד אימות למספר החדש", key="client_phone_send"):
+                        clean_new = new_phone.strip().replace("-", "").replace(" ", "")
+                        if not re.match(r"^05\d{8}$", clean_new):
+                            st.error("מספר טלפון לא תקין.")
+                        elif clean_new == profile.get("phone_number"):
+                            st.info("זה כבר המספר שלך.")
+                        elif _db().get_profile_by_phone(clean_new):
+                            st.error("המספר כבר רשום במערכת.")
+                        else:
+                            _send_otp(clean_new)
+                            st.session_state["_new_phone"] = clean_new
+                            st.rerun()
+                else:
+                    st.caption(f"שלחנו קוד לוואטסאפ של {pending_phone}")
+                    if not st.session_state.get("_otp_sent", True):
+                        st.warning(f"⚠️ WhatsApp לא מוגדר — קוד לבדיקה: **{st.session_state._otp}**")
+                    phone_code = st.text_input("קוד אימות", max_chars=6, key="client_phone_code")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if st.button("✅ אשר והחלף", key="client_phone_confirm", type="primary"):
+                            if _otp_valid(phone_code):
+                                ok, err = _db().update_profile_phone(profile["id"], pending_phone)
+                                if ok:
+                                    st.session_state.reg_phone = pending_phone
+                                    st.session_state.pop("_new_phone", None)
+                                    st.success("✅ מספר הטלפון עודכן!")
+                                    st.rerun()
+                                else:
+                                    st.error("המספר כבר רשום במערכת." if err == "phone_taken" else "שגיאה בעדכון.")
+                            else:
+                                st.error("קוד שגוי או שפג תוקפו.")
+                    with c2:
+                        if st.button("ביטול", key="client_phone_cancel"):
+                            st.session_state.pop("_new_phone", None)
+                            st.rerun()
+
+            # ── MY AGENT ───────────────────────────────────────────────────────
+            my_agent = _db().get_agent_by_id(profile.get("agent_id") or "")
+            if my_agent:
+                agent_phone = my_agent.get("phone_number") or ""
+                wa = ""
+                if agent_phone:
+                    intl = "972" + agent_phone[1:] if agent_phone.startswith("0") else agent_phone
+                    wa = (f' · <a href="https://wa.me/{intl}" target="_blank" '
+                          f'style="color:#16B364">💬 {agent_phone}</a>')
+                st.markdown(f"""
+<div class="profile-box">
+  <div style="font-weight:600;font-size:1rem;margin-bottom:6px">🧑‍💼 הסוכן שלך</div>
+  <div style="color:#374151;font-size:0.95rem">{my_agent.get('full_name','')}{wa}</div>
+</div>""", unsafe_allow_html=True)
+            else:
+                with st.expander("🧑‍💼 הסוכן שלך — לא נבחר", expanded=True):
+                    agents = _all_agents()
+                    if agents:
+                        names = [a["full_name"] for a in agents]
+                        pick = st.selectbox("בחר את סוכן הביטוח שלך", ["—"] + names, key="client_pick_agent")
+                        if pick != "—" and st.button("💾 שמור סוכן", key="client_save_agent"):
+                            chosen = agents[names.index(pick)]
+                            if _db().assign_agent(profile["id"], chosen["id"]):
+                                _db().notify_agent_new_client(chosen["id"], profile["id"])
+                                st.success(f"✅ {pick} הוא הסוכן שלך")
+                                st.rerun()
+                    else:
+                        st.caption("אין סוכנים במערכת כרגע.")
 
         policies = _db().get_user_policies(st.session_state.reg_user_id)
         if policies:
@@ -878,6 +1049,7 @@ def page_dashboard():
                         st.success("✅ החשבון נמחק בהצלחה.")
                         for k, v in defaults.items():
                             st.session_state[k] = v
+                        _forget_login()
                         st.rerun()
                     else:
                         st.error("שגיאה במחיקת החשבון. נסה שוב או צור קשר עם הסוכן.")
@@ -885,6 +1057,7 @@ def page_dashboard():
         if st.button("← יציאה"):
             for k, v in defaults.items():
                 st.session_state[k] = v
+            _forget_login()
             st.rerun()
 
 
@@ -947,6 +1120,7 @@ def page_agent_login():
                     agent = _db().get_agent_by_email_and_password(email.strip(), password)
                     if agent:
                         st.session_state.logged_in_agent = agent
+                        _remember_login("a", st.session_state.logged_in_agent.get("id", ""))
                         st.session_state.step = "agent_dashboard"
                         st.rerun()
                     else:
@@ -1000,6 +1174,7 @@ def page_agent_verify_otp():
                 agent = _db().get_agent_by_phone(st.session_state.reg_phone)
                 if agent:
                     st.session_state.logged_in_agent = agent
+                    _remember_login("a", st.session_state.logged_in_agent.get("id", ""))
                     st.session_state.step = "agent_dashboard"
                     st.rerun()
                 else:
@@ -1090,6 +1265,98 @@ def page_login():
             st.rerun()
 
 
+BASE_URL = "https://bituachbot.streamlit.app"
+
+
+def _clean_phone(raw: str) -> str:
+    return (raw or "").strip().replace("-", "").replace(" ", "")
+
+
+def _admin_header(agent: dict):
+    st.markdown("""
+<style>
+.admin-header {
+  background: #1F2937; color: white; padding: 16px 24px; border-radius: 12px;
+  font-size: 1.1rem; font-weight: 700; margin-bottom: 24px; direction: rtl;
+  display: flex; align-items: center; gap: 10px;
+}
+.client-card {
+  background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px;
+  padding: 16px 20px; margin-bottom: 16px; direction: rtl;
+}
+</style>
+""", unsafe_allow_html=True)
+    st.markdown(f'<div class="admin-header">🔐 BituachBot — ממשק ניהול | {agent.get("full_name", "מנהל")}</div>',
+                unsafe_allow_html=True)
+    if agent.get("agent_code"):
+        st.markdown('<div style="direction:rtl;font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:6px">'
+                    '🔗 קישור רישום לקוחות — שתף עם הלקוחות שלך</div>', unsafe_allow_html=True)
+        st.code(f"{BASE_URL}/?agent={agent['agent_code']}", language=None)
+
+
+def _agent_phone_form(agent: dict, key: str, button_label: str = "💾 שמור טלפון") -> bool:
+    """Phone input + save. Returns True when saved."""
+    new_phone = st.text_input("טלפון נייד (לקבלת התראות וואטסאפ)", placeholder="050-1234567",
+                              value=agent.get("phone_number") or "", key=f"{key}_phone")
+    if st.button(button_label, key=f"{key}_save", type="primary"):
+        clean = _clean_phone(new_phone)
+        other = _db().get_agent_by_phone(clean) if re.match(r"^05\d{8}$", clean) else None
+        if not re.match(r"^05\d{8}$", clean):
+            st.error("מספר טלפון לא תקין (חייב להתחיל ב-05 ולהיות בן 10 ספרות).")
+        elif other and other.get("id") != agent.get("id"):
+            st.error("המספר כבר רשום לסוכן אחר.")
+        elif _db().update_agent_phone(agent["id"], clean):
+            st.session_state.logged_in_agent["phone_number"] = clean
+            st.success("✅ הטלפון נשמר!")
+            return True
+        else:
+            st.error("שגיאה בעדכון")
+    return False
+
+
+def _agent_settings(agent: dict):
+    with st.expander("⚙️ הגדרות חשבון — טלפון, אימייל, סיסמה", expanded=False):
+        st.markdown("**📱 טלפון** — לקבלת התראות על לקוחות חדשים ולכניסה בקוד וואטסאפ")
+        if _agent_phone_form(agent, "settings"):
+            st.rerun()
+
+        st.markdown("---")
+        st.markdown("**✉️ אימייל**")
+        new_email = st.text_input("אימייל", placeholder="israel@example.com",
+                                  value=agent.get("email") or "", key="agent_new_email")
+        if st.button("💾 שמור אימייל", key="save_agent_email"):
+            clean_email = new_email.strip()
+            if not re.match(r"^[^@]+@[^@]+\.[^@]+$", clean_email):
+                st.error("כתובת אימייל לא תקינה")
+            elif _db().update_agent_email(agent["id"], clean_email):
+                st.session_state.logged_in_agent["email"] = clean_email.lower()
+                st.success("✅ האימייל עודכן!")
+            else:
+                st.error("שגיאה בעדכון")
+
+        st.markdown("---")
+        st.markdown("**🔑 שינוי סיסמה**")
+        new_pwd = st.text_input("סיסמה חדשה", type="password", placeholder="לפחות 6 תווים", key="agent_new_pwd")
+        new_pwd2 = st.text_input("אימות סיסמה", type="password", placeholder="חזור על הסיסמה", key="agent_new_pwd2")
+        if st.button("🔑 שנה סיסמה", key="save_agent_pwd"):
+            if len(new_pwd) < 6:
+                st.error("סיסמה חייבת להכיל לפחות 6 תווים")
+            elif new_pwd != new_pwd2:
+                st.error("הסיסמאות אינן תואמות")
+            elif _db().update_agent_password(agent["id"], new_pwd):
+                st.success("✅ הסיסמה עודכנה!")
+            else:
+                st.error("שגיאה בעדכון")
+
+
+def _agent_logout():
+    st.session_state.logged_in_agent = None
+    st.session_state.admin_client = None
+    st.session_state.step = "choose"
+    _forget_login()
+    st.rerun()
+
+
 def page_agent_dashboard():
     """Session-based agent dashboard (no URL params needed)."""
     agent = st.session_state.logged_in_agent
@@ -1097,7 +1364,25 @@ def page_agent_dashboard():
         st.session_state.step = "login_choose"
         st.rerun()
         return
+    fresh = _db().get_agent_by_id(agent.get("id", ""))
+    if fresh:
+        agent.update(fresh)
+        st.session_state.logged_in_agent = agent
+
+    _admin_header(agent)
+
+    # Phone is required: it is where new-client alerts are sent.
+    if not agent.get("phone_number"):
+        st.warning("📱 כדי להמשיך, הוסף את מספר הטלפון שלך — אליו נשלח התראות וואטסאפ על לקוחות חדשים.")
+        if _agent_phone_form(agent, "gate", "💾 שמור והמשך"):
+            st.rerun()
+        if st.button("← יציאה", key="gate_logout"):
+            _agent_logout()
+        return
+
+    _agent_settings(agent)
     _render_admin_content(agent)
+
     st.markdown("---")
     with st.expander("🔧 בדיקת חיבור WhatsApp", expanded=False):
         instance = _get_secret("GREEN_API_INSTANCE") or os.getenv("GREEN_API_INSTANCE", "")
@@ -1137,93 +1422,266 @@ def page_agent_dashboard():
                         st.error("❌ שגיאה בשליחה")
                 except Exception as e:
                     st.error(f"Exception: {e}")
-    st.markdown("---")
-    with st.expander("⚙️ הגדרות חשבון", expanded=False):
-        agent = st.session_state.logged_in_agent or {}
-
-        st.markdown("**עדכון טלפון לכניסה בקוד וואטסאפ**")
-        new_phone = st.text_input("טלפון נייד", placeholder="050-1234567",
-                                  value=agent.get("phone_number") or "", key="agent_new_phone")
-        if st.button("💾 שמור טלפון", key="save_agent_phone"):
-            clean = new_phone.strip().replace("-", "").replace(" ", "")
-            if not re.match(r"^05\d{8}$", clean):
-                st.error("מספר טלפון לא תקין")
-            elif _db().update_agent_phone(agent["id"], clean):
-                st.session_state.logged_in_agent["phone_number"] = clean
-                st.success("✅ הטלפון עודכן!")
-            else:
-                st.error("שגיאה בעדכון")
-
-        st.markdown("---")
-        st.markdown("**עדכון אימייל**")
-        new_email = st.text_input("אימייל", placeholder="israel@example.com",
-                                  value=agent.get("email") or "", key="agent_new_email")
-        if st.button("💾 שמור אימייל", key="save_agent_email"):
-            clean_email = new_email.strip()
-            if not re.match(r"^[^@]+@[^@]+\.[^@]+$", clean_email):
-                st.error("כתובת אימייל לא תקינה")
-            elif _db().update_agent_email(agent["id"], clean_email):
-                st.session_state.logged_in_agent["email"] = clean_email.lower()
-                st.success("✅ האימייל עודכן!")
-            else:
-                st.error("שגיאה בעדכון")
-
-        st.markdown("---")
-        st.markdown("**שינוי סיסמה**")
-        new_pwd = st.text_input("סיסמה חדשה", type="password", placeholder="לפחות 6 תווים", key="agent_new_pwd")
-        new_pwd2 = st.text_input("אימות סיסמה", type="password", placeholder="חזור על הסיסמה", key="agent_new_pwd2")
-        if st.button("🔑 שנה סיסמה", key="save_agent_pwd"):
-            if len(new_pwd) < 6:
-                st.error("סיסמה חייבת להכיל לפחות 6 תווים")
-            elif new_pwd != new_pwd2:
-                st.error("הסיסמאות אינן תואמות")
-            elif _db().update_agent_password(agent["id"], new_pwd):
-                st.success("✅ הסיסמה עודכנה!")
-            else:
-                st.error("שגיאה בעדכון")
-
     if st.button("← יציאה מממשק הניהול"):
-        st.session_state.logged_in_agent = None
-        st.session_state.admin_client = None
-        st.session_state.step = "choose"
+        _agent_logout()
+
+
+def _annex_upload_form(key: str, code: str = ""):
+    """Upload one נספח PDF to the shared library. If `code` is given it is fixed."""
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        code_in = st.text_input("קוד נספח", value=code, placeholder="8713", key=f"{key}_code", disabled=bool(code))
+    with c2:
+        name_in = st.text_input("שם נספח", placeholder="אבחנה מהירה", key=f"{key}_name")
+    current_year = datetime.now().year
+    year = st.selectbox("שנת תוקף", list(range(current_year, current_year - 6, -1)), key=f"{key}_year")
+    the_code = (code or code_in).strip()
+    if the_code:
+        versions = _db().get_annex_versions(the_code)
+        if versions:
+            st.caption(f"גרסאות קיימות במאגר: {' · '.join(str(y) for y in versions)}")
+    pdf = st.file_uploader("PDF של הנספח", type=["pdf"], key=f"{key}_pdf")
+    if st.button("💾 שמור נספח במאגר", type="primary", key=f"{key}_save"):
+        if not re.fullmatch(r"\d{4,6}", the_code):
+            st.error("חובה להזין קוד נספח (4-6 ספרות).")
+            return
+        if not pdf:
+            st.error("בחר קובץ PDF של הנספח.")
+            return
+        try:
+            text = _extract_pdf_text(pdf.getvalue())
+        except ValueError as e:
+            st.error(f"❌ {e}")
+            return
+        if not text.strip():
+            st.error("לא ניתן לקרוא טקסט מהקובץ.")
+            return
+        aliases = _extract_related_codes(text, the_code)
+        ok, result = _db().upsert_master_annex(
+            the_code, name_in.strip() or f"נספח {the_code}", text, alias_codes=aliases, version_year=year
+        )
+        if ok:
+            st.success(f"✅ נספח {' · '.join([the_code] + aliases)} נשמר במאגר — כל הלקוחות עם הקוד עודכנו.")
+            st.rerun()
+        else:
+            st.error(f"שגיאה: {result}")
+
+
+def _render_client_card(client: dict, agent_id: str):
+    """Everything about one client: status, annexes, missing annexes, documents, upload, bot chat."""
+    client = _db().get_profile_by_id(client.get("id", "")) or client
+    policies = _db().get_user_policies(client["id"])
+    ready = [p for p in policies if p.get("has_data")]
+    missing = [p for p in policies if not p.get("has_data")]
+    docs = _db().list_client_documents(client["id"])
+    status = InsuranceClientDB.client_status(ready, missing, len(docs))
+    icon, label = STATUS_LABELS[status]
+
+    head_l, head_r = st.columns([5, 1])
+    with head_l:
+        st.markdown(f"## 👤 {client.get('full_name','')}")
+    with head_r:
+        if st.button("✖ סגור", key="close_client", use_container_width=True):
+            st.session_state.admin_client = None
+            st.rerun()
+    st.markdown(f"""
+<div class="client-card">
+  <div style="color:#374151;font-size:0.95rem;line-height:1.9">
+    📱 {client.get('phone_number','')} &nbsp;·&nbsp; 🆔 {client.get('teudat_zehut') or '—'}
+    &nbsp;·&nbsp; 📅 נרשם {(client.get('created_at') or '')[:10]}<br>
+    <strong>{icon} {label}</strong> &nbsp;·&nbsp; ✅ {len(ready)} נספחים במאגר
+    &nbsp;·&nbsp; ⏳ {len(missing)} חסרים &nbsp;·&nbsp; 📄 {len(docs)} מסמכים
+  </div>
+</div>""", unsafe_allow_html=True)
+
+    st.markdown("#### 📋 נספחים")
+    if not policies:
+        st.info("עדיין אין נספחים ללקוח — העלה את הפוליסה שלו למטה.")
+    for p in ready:
+        company = f" · {p['company']}" if p.get("company") else ""
+        st.markdown(f"✅ **{p['annex_code']}** — {p.get('annex_name','')}{company}")
+    for p in missing:
+        st.markdown(f"⏳ **{p['annex_code']}** — חסר במאגר, הבוט לא יכול לענות עליו עדיין")
+        with st.expander(f"📤 העלה את נספח {p['annex_code']}", expanded=False):
+            _annex_upload_form(f"card_{client['id'][:8]}_{p['annex_code']}", p["annex_code"])
+
+    st.markdown(f"#### 📄 העלה פוליסה ל{client.get('full_name','לקוח')}")
+    st.caption("הקובץ נשמר בתיק של הלקוח הזה בלבד. הנספחים שבו יזוהו אוטומטית.")
+    pdf_file = st.file_uploader("בחר קובץ PDF", type=["pdf"], key=f"admin_pdf_{client['id'][:8]}")
+    if pdf_file and st.button("⬆️ שמור בתיק הלקוח וזהה נספחים", type="primary", key="admin_pdf_save"):
+        data = pdf_file.getvalue()
+        _, codes = _process_policy_pdf(data)
+        saved = _db().upload_client_document(client["id"], pdf_file.name, data, "agent")
+        if codes:
+            linked, _ = _db().link_annex_codes(client["id"], codes)
+            after = _db().get_user_policies(client["id"])
+            now_missing = [p["annex_code"] for p in after if not p.get("has_data") and p["annex_code"] in codes]
+            st.success(f"✅ זוהו {len(codes)} נספחים ({linked} חדשים): {' · '.join(codes)}")
+            if now_missing:
+                st.warning(f"⏳ חסרים במאגר: {' · '.join(now_missing)} — העלה אותם כדי שהבוט יוכל לענות.")
+            if linked:
+                ready_count = len([p for p in after if p.get("has_data")])
+                if ready_count:
+                    _db().send_ready(client["phone_number"], client["full_name"], ready_count)
+        else:
+            st.warning("לא זוהו קודי נספחים בקובץ." + (" הקובץ נשמר בתיק הלקוח." if saved else ""))
+        if not saved:
+            st.caption("⚠️ הקובץ עצמו לא נשמר באחסון (בדוק את הגדרות Supabase Storage).")
+
+    with st.expander(f"📁 מסמכים ({len(docs)})", expanded=False):
+        _render_documents(client["id"], "agent_docs")
+
+    _render_client_chat(client)
+
+
+def _render_client_chat(client: dict):
+    st.markdown("---")
+    st.markdown("### 💬 שאל את הבוט עבור הלקוח")
+
+    client_id = client.get("id", "")
+    if st.session_state.get("agent_bot_client_id") != client_id:
+        st.session_state.agent_bot_client_id = client_id
+        st.session_state.agent_bot_messages = []
+
+    policies = _db().get_user_policies(client_id)
+    ready_policies = [p for p in policies if p.get("has_data") and p.get("full_text")]
+
+    if not ready_policies:
+        st.info("אין נספחים זמינים לבוט עבור לקוח זה — העלה PDF קודם.")
+    else:
+        st.caption(
+            f"בוט מבוסס על {len(ready_policies)} נספחים: "
+            + " · ".join(p["annex_code"] for p in ready_policies)
+        )
+
+        for msg in st.session_state.agent_bot_messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        user_q = st.chat_input(f"שאל שאלה לגבי {client.get('full_name', 'הלקוח')}...")
+        if user_q:
+            st.session_state.agent_bot_messages.append({"role": "user", "content": user_q})
+            with st.chat_message("user"):
+                st.markdown(user_q)
+
+            system_lines = [
+                "אתה מומחה ביטוח בריאות ישראלי. אתה עוזר לסוכן ביטוח לענות על שאלות לגבי פוליסת לקוח ספציפי.",
+                f"פרטי הלקוח: {client.get('full_name', '')} | טלפון: {client.get('phone_number', '')}",
+                "",
+                "נספחי הלקוח:",
+            ]
+            for p in ready_policies:
+                system_lines.append(
+                    f"\n--- נספח {p['annex_code']} ({p['annex_name']}"
+                    + (f", {p['company']}" if p.get("company") else "")
+                    + ") ---"
+                )
+                system_lines.append(p["full_text"][:3000])
+
+            system_lines += [
+                "",
+                "ענה בעברית. הסתמך על הנספחים. אם המידע לא קיים, ציין זאת בבירור.",
+            ]
+
+            history = [
+                {"role": m["role"], "content": m["content"]}
+                for m in st.session_state.agent_bot_messages
+            ]
+            with st.chat_message("assistant"):
+                with st.spinner("חושב..."):
+                    try:
+                        resp = _claude_create(
+                            max_tokens=1024,
+                            system="\n".join(system_lines),
+                            messages=history,
+                        )
+                        answer = resp.content[0].text
+                    except Exception as e:
+                        print(f"[landing] agent bot chat: {e}")
+                        answer = f"❌ {_anthropic_error_he(e)}"
+                st.markdown(answer)
+            if not answer.startswith("❌"):
+                st.session_state.agent_bot_messages.append({"role": "assistant", "content": answer})
+            else:
+                st.session_state.agent_bot_messages.pop()
+
+        if st.session_state.agent_bot_messages:
+            if st.button("🗑️ נקה שיחה", key="clear_bot_chat"):
+                st.session_state.agent_bot_messages = []
+                st.rerun()
+
+
+def _render_new_client_form(agent: dict):
+    with st.expander("➕ לקוח חדש — רשום לקוח בעצמך", expanded=False):
+        st.caption("ללקוח שמעדיף שתעשה את זה בשבילו. הלקוח יקבל הודעת וואטסאפ עם מספר הבוט.")
+        with st.form("new_client_form", clear_on_submit=False):
+            name = st.text_input("שם מלא")
+            phone = st.text_input("טלפון נייד", placeholder="050-1234567")
+            tz = st.text_input("תעודת זהות (רשות)", max_chars=9)
+            pdf = st.file_uploader("פוליסה PDF (רשות)", type=["pdf"])
+            send_welcome = st.checkbox("שלח ללקוח הודעת וואטסאפ עם מספר הבוט", value=True)
+            submitted = st.form_submit_button("✅ צור לקוח", type="primary")
+        if not submitted:
+            return
+        clean = _clean_phone(phone)
+        errors = []
+        if not name.strip():
+            errors.append("נא להזין שם מלא.")
+        if not re.match(r"^05\d{8}$", clean):
+            errors.append("מספר טלפון לא תקין.")
+        if tz.strip() and not _validate_teudat_zehut(tz.strip()):
+            errors.append("תעודת זהות לא תקינה.")
+        if errors:
+            for e in errors:
+                st.error(e)
+            return
+        existing = _db().get_profile_by_phone(clean)
+        if existing:
+            if existing.get("agent_id") == agent["id"]:
+                st.info("הלקוח כבר רשום אצלך — פתחתי את התיק שלו.")
+                st.session_state.admin_client = existing
+                st.rerun()
+            elif not existing.get("agent_id"):
+                _db().assign_agent(existing["id"], agent["id"])
+                st.success("הלקוח כבר היה רשום בלי סוכן — שייכתי אותו אליך.")
+                st.session_state.admin_client = existing
+                st.rerun()
+            else:
+                st.error("המספר כבר רשום אצל סוכן אחר.")
+            return
+        data = pdf.getvalue() if pdf else b""
+        codes = _process_policy_pdf(data)[1] if data else []
+        ok, user_id = _db().register_user_with_policies(clean, name.strip(), codes, tz.strip(), agent["id"])
+        if not ok:
+            st.error(user_id)
+            return
+        if data:
+            _db().upload_client_document(user_id, pdf.name, data, "agent")
+        if send_welcome:
+            _db().send_welcome_from_agent(clean, name.strip(), agent.get("full_name", ""), BASE_URL)
+        st.success(f"✅ {name.strip()} נרשם" + (f" · זוהו {len(codes)} נספחים" if codes else ""))
+        st.session_state.admin_client = _db().get_profile_by_id(user_id)
         st.rerun()
 
 
 def _render_admin_content(agent: dict):
-    """Shared admin UI used by both page_agent_dashboard and page_admin."""
-    st.markdown("""
-<style>
-.admin-header {
-  background: #1F2937; color: white; padding: 16px 24px; border-radius: 12px;
-  font-size: 1.1rem; font-weight: 700; margin-bottom: 24px; direction: rtl;
-  display: flex; align-items: center; gap: 10px;
-}
-.client-card {
-  background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px;
-  padding: 16px 20px; margin-bottom: 16px; direction: rtl;
-}
-</style>
-""", unsafe_allow_html=True)
+    """Agent workspace. agent['id'] empty = main admin (sees all clients)."""
+    agent_id = agent.get("id", "")
 
-    agent_name = agent.get("full_name", "מנהל")
-    agent_id   = agent.get("id", "")
-    agent_code = agent.get("agent_code", "")
-    base_url   = "https://bituachbot.streamlit.app"
-    st.markdown(f'<div class="admin-header">🔐 BituachBot — ממשק ניהול | {agent_name}</div>', unsafe_allow_html=True)
+    # ── OPEN CLIENT (shown first) ─────────────────────────────────────────────
+    if st.session_state.admin_client:
+        _render_client_card(st.session_state.admin_client, agent_id)
+        st.markdown("---")
 
-    # Copyable client registration link
-    st.markdown('<div style="direction:rtl;font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:6px">🔗 קישור רישום לקוחות — שתף עם הלקוחות שלך</div>', unsafe_allow_html=True)
-    st.code(f"{base_url}/?agent={agent_code}", language=None)
+    # ── NEW CLIENT ────────────────────────────────────────────────────────────
+    if agent_id:
+        _render_new_client_form(agent)
 
-    if agent_id and not agent.get("phone_number"):
-        st.warning("📱 לא הוגדר טלפון — לא תקבל התראות וואטסאפ על לקוחות חדשים. הוסף טלפון ב'הגדרות חשבון' למטה.")
-
-    # ── MY CLIENTS ─────────────────────────────────────────────────────────────
-    st.markdown("---")
+    # ── MY CLIENTS ────────────────────────────────────────────────────────────
     clients = _db().get_agent_clients(agent_id)
     st.markdown(f"### 👥 הלקוחות שלי ({len(clients)})")
     if not clients:
-        st.info("עדיין אין לקוחות. שתף את הקישור למעלה כדי שלקוחות יירשמו דרכך.")
+        st.info("עדיין אין לקוחות. שתף את הקישור למעלה, או רשום לקוח ב'➕ לקוח חדש'.")
     else:
         counts = {k: sum(1 for c in clients if c["status"] == k) for k in STATUS_LABELS}
         m1, m2, m3, m4 = st.columns(4)
@@ -1232,10 +1690,13 @@ def _render_admin_content(agent: dict):
         m3.metric("⏳ חסר נספח במאגר", counts["waiting_annex"])
         m4.metric("❌ בלי פוליסה", counts["empty"])
 
-        status_filter = st.selectbox(
-            "סינון", ["הכל"] + [f"{v[0]} {v[1]}" for v in STATUS_LABELS.values()], key="clients_filter"
-        )
-        search = st.text_input("חיפוש לפי שם או טלפון", key="clients_search", placeholder="שם / 05...")
+        f1, f2 = st.columns(2)
+        with f1:
+            status_filter = st.selectbox(
+                "סינון", ["הכל"] + [f"{v[0]} {v[1]}" for v in STATUS_LABELS.values()], key="clients_filter"
+            )
+        with f2:
+            search = st.text_input("חיפוש לפי שם או טלפון", key="clients_search", placeholder="שם / 05...")
         shown = clients
         if status_filter != "הכל":
             wanted = [k for k, v in STATUS_LABELS.items() if f"{v[0]} {v[1]}" == status_filter][0]
@@ -1246,11 +1707,11 @@ def _render_admin_content(agent: dict):
 
         for c in shown:
             icon, label = STATUS_LABELS[c["status"]]
-            col_a, col_b = st.columns([4, 1])
+            col_a, col_b = st.columns([5, 1])
             with col_a:
                 details = []
                 if c["ready_codes"]:
-                    details.append(f"✅ {len(c['ready_codes'])} נספחים")
+                    details.append(f"✅ {', '.join(c['ready_codes'])}")
                 if c["pending_codes"]:
                     details.append(f"⏳ חסרים: {', '.join(c['pending_codes'])}")
                 details.append(f"📄 {c['doc_count']} מסמכים")
@@ -1265,167 +1726,46 @@ def _render_admin_content(agent: dict):
                     st.session_state.admin_client = c
                     st.rerun()
 
+    # ── FIND / CLAIM BY PHONE ─────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("### חיפוש לקוח לפי טלפון")
-
-    phone_input = st.text_input("חפש לקוח לפי טלפון", placeholder="0501234567")
-    if st.button("חפש לקוח"):
-        clean = phone_input.strip().replace("-", "").replace(" ", "")
+    st.markdown("### 🔎 חיפוש לקוח לפי טלפון")
+    s1, s2 = st.columns([3, 1])
+    with s1:
+        phone_input = st.text_input("טלפון", placeholder="0501234567", key="find_phone",
+                                    label_visibility="collapsed")
+    with s2:
+        do_find = st.button("חפש", key="find_btn", use_container_width=True)
+    if do_find:
+        clean = _clean_phone(phone_input)
         if not re.match(r"^05\d{8}$", clean):
             st.error("מספר טלפון לא תקין")
+            st.session_state.pop("_found_client", None)
         else:
-            profile = _db().get_profile_by_phone(clean)
-            if not profile:
-                st.error(f"לקוח עם מספר {clean} לא נמצא במערכת")
-                st.session_state.admin_client = None
+            found = _db().get_profile_by_phone(clean)
+            if not found:
+                st.error(f"לקוח עם מספר {clean} לא נמצא — אפשר לרשום אותו ב'➕ לקוח חדש'.")
+                st.session_state.pop("_found_client", None)
             else:
-                st.session_state.admin_client = profile
-                st.rerun()
-
-    client = st.session_state.admin_client
-    if client:
-        st.markdown(f"""
-<div class="client-card">
-  <div style="font-weight:700;font-size:1rem;margin-bottom:8px">פרטי לקוח</div>
-  <div style="color:#374151;font-size:0.92rem;line-height:1.9">
-    👤 <strong>{client.get('full_name','')}</strong><br>
-    📱 {client.get('phone_number','')}<br>
-    🆔 {client.get('teudat_zehut','—')}<br>
-    🔑 ID: <code style="font-size:0.78rem">{client.get('id','')}</code>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-        with st.expander("📁 מסמכים של הלקוח", expanded=False):
-            _render_documents(client["id"], "agent_docs")
-
-        existing = _db().get_user_policies(client["id"])
-        if existing:
-            st.markdown(f"**נספחים קיימים ({len(existing)})**")
-            for p in existing:
-                icon = "✅" if p.get("has_data") else "⏳"
-                st.markdown(f"- {icon} נספח **{p.get('annex_code','')}** — {p.get('annex_name','')}")
-
-        st.markdown("---")
-        st.markdown("#### העלה PDF של הפוליסה")
-        pdf_file = st.file_uploader("בחר קובץ PDF", type=["pdf"], key="admin_pdf")
-
-        if pdf_file:
-            admin_pdf_bytes = pdf_file.getvalue()
-            with st.spinner("מנתח PDF..."):
-                try:
-                    pdf_text = _extract_pdf_text(admin_pdf_bytes)
-                except ValueError as e:
-                    st.error(f"❌ {e}")
-                    pdf_text = ""
-
-            if not pdf_text.strip():
-                st.error("לא ניתן לקרוא טקסט מהקובץ. ייתכן שהוא סרוק — נסה קובץ אחר.")
-            else:
-                with st.spinner("מזהה נספחים בעזרת AI..."):
-                    annex_codes = _extract_annex_codes(pdf_text)
-
-                if not annex_codes:
-                    st.warning("לא זוהו קודי נספחים בקובץ.")
-                    if st.button("💾 שמור את הקובץ בתיק הלקוח בכל זאת", key="save_doc_only"):
-                        if _db().upload_client_document(client["id"], pdf_file.name, admin_pdf_bytes, "agent"):
-                            st.success("✅ הקובץ נשמר בתיק הלקוח")
-                        else:
-                            st.error("שגיאה בשמירת הקובץ")
-                else:
-                    st.info(f"זוהו {len(annex_codes)} נספחים: **{' · '.join(annex_codes)}**")
-
-                    if st.button("✅ קשר נספחים ללקוח", type="primary"):
-                        _db().upload_client_document(client["id"], pdf_file.name, admin_pdf_bytes, "agent")
-                        linked, skipped = _db().link_annex_codes(client["id"], annex_codes)
-                        if linked > 0:
-                            st.success(f"✅ קושרו {linked} נספחים חדשים בהצלחה!")
-                            _db().send_ready(client["phone_number"], client["full_name"], linked)
-                            st.info("📱 נשלחה הודעת WhatsApp ללקוח")
-                        else:
-                            st.warning("לא נוספו נספחים חדשים")
-                        if skipped:
-                            st.caption(f"נספחים שדולגו: {', '.join(skipped)}")
-                        st.session_state.admin_client = None
-                        st.rerun()
-
-    # ── AGENT BOT CHAT ─────────────────────────────────────────────────────────
-    if client:
-        st.markdown("---")
-        st.markdown("### 💬 שאל את הבוט עבור הלקוח")
-
-        client_id = client.get("id", "")
-        if st.session_state.get("agent_bot_client_id") != client_id:
-            st.session_state.agent_bot_client_id = client_id
-            st.session_state.agent_bot_messages = []
-
-        policies = _db().get_user_policies(client_id)
-        ready_policies = [p for p in policies if p.get("has_data") and p.get("full_text")]
-
-        if not ready_policies:
-            st.info("אין נספחים זמינים לבוט עבור לקוח זה — העלה PDF קודם.")
-        else:
-            st.caption(
-                f"בוט מבוסס על {len(ready_policies)} נספחים: "
-                + " · ".join(p["annex_code"] for p in ready_policies)
-            )
-
-            for msg in st.session_state.agent_bot_messages:
-                with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
-
-            user_q = st.chat_input(f"שאל שאלה לגבי {client.get('full_name', 'הלקוח')}...")
-            if user_q:
-                st.session_state.agent_bot_messages.append({"role": "user", "content": user_q})
-                with st.chat_message("user"):
-                    st.markdown(user_q)
-
-                system_lines = [
-                    "אתה מומחה ביטוח בריאות ישראלי. אתה עוזר לסוכן ביטוח לענות על שאלות לגבי פוליסת לקוח ספציפי.",
-                    f"פרטי הלקוח: {client.get('full_name', '')} | טלפון: {client.get('phone_number', '')}",
-                    "",
-                    "נספחי הלקוח:",
-                ]
-                for p in ready_policies:
-                    system_lines.append(
-                        f"\n--- נספח {p['annex_code']} ({p['annex_name']}"
-                        + (f", {p['company']}" if p.get("company") else "")
-                        + ") ---"
-                    )
-                    system_lines.append(p["full_text"][:3000])
-
-                system_lines += [
-                    "",
-                    "ענה בעברית. הסתמך על הנספחים. אם המידע לא קיים, ציין זאת בבירור.",
-                ]
-
-                history = [
-                    {"role": m["role"], "content": m["content"]}
-                    for m in st.session_state.agent_bot_messages
-                ]
-                with st.chat_message("assistant"):
-                    with st.spinner("חושב..."):
-                        try:
-                            resp = _claude_create(
-                                max_tokens=1024,
-                                system="\n".join(system_lines),
-                                messages=history,
-                            )
-                            answer = resp.content[0].text
-                        except Exception as e:
-                            print(f"[landing] agent bot chat: {e}")
-                            answer = f"❌ {_anthropic_error_he(e)}"
-                    st.markdown(answer)
-                if not answer.startswith("❌"):
-                    st.session_state.agent_bot_messages.append({"role": "assistant", "content": answer})
-                else:
-                    st.session_state.agent_bot_messages.pop()
-
-            if st.session_state.agent_bot_messages:
-                if st.button("🗑️ נקה שיחה", key="clear_bot_chat"):
-                    st.session_state.agent_bot_messages = []
+                st.session_state["_found_client"] = found
+    found = st.session_state.get("_found_client")
+    if found:
+        owner = found.get("agent_id")
+        if not agent_id or owner == agent_id:
+            st.session_state.admin_client = found
+            st.session_state.pop("_found_client", None)
+            st.rerun()
+        elif not owner:
+            st.info(f"**{found.get('full_name','')}** ({found.get('phone_number','')}) רשום בלי סוכן.")
+            if st.button("🤝 שייך אליי", key="claim_client", type="primary"):
+                if _db().assign_agent(found["id"], agent_id):
+                    st.session_state.admin_client = found
+                    st.session_state.pop("_found_client", None)
+                    st.success("✅ הלקוח שויך אליך")
                     st.rerun()
+        else:
+            st.error("הלקוח משויך לסוכן אחר.")
 
+    # ── MISSING ANNEXES ───────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("### 📌 נספחים שחסרים במאגר")
     st.caption("קודים שיש ללקוחות שלך אבל עדיין לא הועלו למאגר — עד שתעלה אותם, הבוט לא יכול לענות עליהם.")
@@ -1435,56 +1775,19 @@ def _render_admin_content(agent: dict):
     else:
         for item in pending_codes:
             names = item["clients"]
-            st.markdown(
-                f"- **{item['annex_code']}** — {len(names)} לקוחות: "
-                f"<span style='color:#6B7280'>{', '.join(names[:5])}{' ...' if len(names) > 5 else ''}</span>",
-                unsafe_allow_html=True,
-            )
-        st.caption("העלה אותם ב'הוסף / עדכן נספח' למטה — הלקוחות יתעדכנו אוטומטית.")
+            with st.expander(
+                f"⏳ נספח {item['annex_code']} — {len(names)} לקוחות: "
+                f"{', '.join(names[:4])}{' ...' if len(names) > 4 else ''}",
+                expanded=False,
+            ):
+                _annex_upload_form(f"pending_{item['annex_code']}", item["annex_code"])
 
+    # ── ANY ANNEX ─────────────────────────────────────────────────────────────
     st.markdown("---")
-    st.markdown("### הוספת / עדכון נספח במאגר")
-    st.caption("הוסף נספח חדש למאגר המשותף — כל הלקוחות שיש להם את הקוד יתעדכנו אוטומטית")
+    with st.expander("➕ הוסף / עדכן נספח במאגר (כל קוד)", expanded=False):
+        st.caption("מאגר משותף — כל הלקוחות שיש להם את הקוד יתעדכנו אוטומטית.")
+        _annex_upload_form("nispaj")
 
-    with st.expander("➕ הוסף / עדכן נספח", expanded=False):
-        nispaj_code = st.text_input("קוד נספח", placeholder="8713", key="nispaj_code")
-        nispaj_name = st.text_input("שם נספח", placeholder="אבחנה מהירה", key="nispaj_name")
-        current_year = datetime.now().year
-        nispaj_year = st.selectbox("שנת תוקף", list(range(current_year, current_year - 6, -1)), key="nispaj_year")
-        if nispaj_code.strip():
-            existing_years = _db().get_annex_versions(nispaj_code.strip())
-            if existing_years:
-                st.caption(f"גרסאות קיימות: {' · '.join(str(y) for y in existing_years)}")
-        nispaj_pdf  = st.file_uploader("PDF של הנספח", type=["pdf"], key="nispaj_pdf")
-
-        if nispaj_pdf:
-            with st.spinner("קורא PDF..."):
-                try:
-                    nispaj_text = _extract_pdf_text(nispaj_pdf.read())
-                except ValueError as e:
-                    st.error(f"❌ {e}")
-                    nispaj_text = ""
-            if nispaj_text.strip():
-                st.success(f"נקרא {len(nispaj_text)} תווים מהנספח")
-                code = nispaj_code.strip()
-                if code:
-                    alias_codes = _extract_related_codes(nispaj_text, code)
-                    if alias_codes:
-                        st.info(f"🔗 זוהו קודים נוספים לאותו נספח: **{' · '.join(alias_codes)}** — יישמרו אוטומטית")
-                if st.button("💾 שמור נספח במאגר", type="primary", key="save_nispaj"):
-                    name = nispaj_name.strip() or f"נספח {code}"
-                    if not code:
-                        st.error("חובה להזין קוד נספח")
-                    else:
-                        alias_codes = _extract_related_codes(nispaj_text, code)
-                        ok, result = _db().upsert_master_annex(code, name, nispaj_text, alias_codes=alias_codes, version_year=nispaj_year)
-                        if ok:
-                            all_codes = [code] + alias_codes
-                            st.success(f"✅ נשמרו קודים: **{' · '.join(all_codes)}** ({nispaj_year}) — לקוחות עודכנו אוטומטית.")
-                        else:
-                            st.error(f"שגיאה: {result}")
-            else:
-                st.error("לא ניתן לקרוא טקסט מהקובץ")
 
 
 # ── PRIVACY POLICY PAGE ────────────────────────────────────────────────────────
@@ -1595,7 +1898,9 @@ def page_admin():
                 st.error("סיסמה שגויה")
         return
 
-    _render_admin_content(agent_for_admin or {"full_name": "מנהל ראשי", "id": "", "agent_code": ""})
+    _admin_agent = agent_for_admin or {"full_name": "מנהל ראשי", "id": "", "agent_code": ""}
+    _admin_header(_admin_agent)
+    _render_admin_content(_admin_agent)
 
     st.markdown("---")
     if st.button("← יציאה מממשק הניהול"):
@@ -1606,6 +1911,10 @@ def page_admin():
 
 
 # ── ROUTER ─────────────────────────────────────────────────────────────────────
+if not (_is_privacy or _is_admin or _agent_code):
+    _restore_session()
+_flush_cookie_op()
+
 if _is_privacy:
     page_privacy()
 elif _is_admin:

@@ -185,6 +185,7 @@ class InsuranceClientDB:
     def delete_profile(self, user_id: str) -> bool:
         """Delete a user's policies and profile (right to erasure)."""
         try:
+            self.delete_client_documents(user_id)
             self.client.table("user_policies").delete().eq("user_id", user_id).execute()
             self.client.table("profiles").delete().eq("id", user_id).execute()
             return True
@@ -249,6 +250,37 @@ class InsuranceClientDB:
         except Exception as e:
             print(f"[InsuranceClientDB] get_profile_by_phone: {e}")
             return None
+
+    def get_profile_by_id(self, user_id: str) -> dict | None:
+        if not user_id:
+            return None
+        try:
+            res = self.client.table("profiles").select("*").eq("id", user_id).limit(1).execute()
+            return res.data[0] if res.data else None
+        except Exception as e:
+            print(f"[InsuranceClientDB] get_profile_by_id: {e}")
+            return None
+
+    def assign_agent(self, user_id: str, agent_id: str) -> bool:
+        """Link a client to an agent (used for 'claim client' and for clients choosing their agent)."""
+        try:
+            self.client.table("profiles").update({"agent_id": agent_id}).eq("id", user_id).execute()
+            return True
+        except Exception as e:
+            print(f"[InsuranceClientDB] assign_agent: {e}")
+            return False
+
+    def update_profile_phone(self, user_id: str, phone: str) -> tuple[bool, str]:
+        """Change a client's phone. Returns (False, 'phone_taken') if another profile uses it."""
+        try:
+            other = self.get_profile_by_phone(phone)
+            if other and other.get("id") != user_id:
+                return False, "phone_taken"
+            self.client.table("profiles").update({"phone_number": phone}).eq("id", user_id).execute()
+            return True, ""
+        except Exception as e:
+            print(f"[InsuranceClientDB] update_profile_phone: {e}")
+            return False, str(e)
 
     def register_user_with_policies(
         self, phone: str, name: str, annex_codes: list[str], tz: str, agent_id: str = ""
@@ -679,6 +711,15 @@ class InsuranceClientDB:
             docs.append({"path": f"{user_id}/{name}", "name": self._decode_filename(fname) if fname else name, "uploaded_by": who, "uploaded_at": when})
         return docs
 
+    def delete_client_documents(self, user_id: str) -> None:
+        paths = [d["path"] for d in self.list_client_documents(user_id)]
+        if not paths:
+            return
+        try:
+            self.client.storage.from_(self.DOCS_BUCKET).remove(paths)
+        except Exception as e:
+            print(f"[InsuranceClientDB] delete_client_documents: {e}")
+
     def document_url(self, path: str, expires_in: int = 3600) -> str | None:
         try:
             res = self.client.storage.from_(self.DOCS_BUCKET).create_signed_url(path, expires_in)
@@ -821,3 +862,18 @@ class InsuranceClientDB:
         except Exception as e:
             print(f"[InsuranceClientDB] _client_snapshot: {e}")
             return None
+
+    def send_welcome_from_agent(self, phone: str, name: str, agent_name: str, login_url: str = "") -> bool:
+        """Sent from the bot number when an agent creates a client — the client saves this number."""
+        lines = [
+            f"שלום {name}! 👋",
+            "",
+            f"הסוכן שלך, {agent_name}, רשם אותך ל-BituachBot 🛡️ — עוזר הביטוח החכם שלך בוואטסאפ.",
+            "",
+            "שמור את המספר הזה ושלח כאן כל שאלה על הביטוח שלך, למשל:",
+            '• "יש לי כיסוי לפיזיותרפיה?"',
+            '• "כמה ההשתתפות העצמית ב-MRI?"',
+        ]
+        if login_url:
+            lines += ["", f"לאזור האישי שלך (פוליסות, נספחים ומסמכים): {login_url}"]
+        return self._whatsapp(phone, "\n".join(lines))
