@@ -298,23 +298,60 @@ def _extract_related_codes(text: str, primary_code: str) -> list[str]:
     return list(found)
 
 
+CLAUDE_FALLBACK_MODELS = ["claude-sonnet-4-5", "claude-haiku-4-5"]
+
+
+def _claude_model() -> str:
+    return _get_secret("CLAUDE_MODEL") or os.getenv("CLAUDE_MODEL", "") or "claude-sonnet-4-6"
+
+
+def _claude_create(**kwargs):
+    """messages.create with the configured model, falling back if the model is rejected."""
+    import anthropic
+    models = [_claude_model()] + [m for m in CLAUDE_FALLBACK_MODELS if m != _claude_model()]
+    last_err = None
+    for model in models:
+        try:
+            return _claude().messages.create(model=model, **kwargs)
+        except (anthropic.NotFoundError, anthropic.BadRequestError) as e:
+            last_err = e
+            msg = str(getattr(e, "message", e)).lower()
+            if "model" not in msg:
+                break  # not a model problem (e.g. no credit) — trying other models won't help
+    raise last_err
+
+
+def _anthropic_error_he(e: Exception) -> str:
+    msg = str(getattr(e, "message", e))
+    low = msg.lower()
+    if "credit balance" in low or "billing" in low:
+        return "אין קרדיט בחשבון Anthropic — יש לטעון קרדיט ב-console.anthropic.com."
+    if "api key" in low or "authentication" in low or "x-api-key" in low:
+        return "מפתח ה-API של Anthropic לא תקין."
+    return f"שגיאה בשירות ה-AI: {msg[:200]}"
+
+
 def _extract_annex_codes(text: str) -> list[str]:
-    client = _claude()
+    """Ask Claude for the annex codes in a policy. Returns [] (and shows why) if the AI call fails."""
     prompt = (
-        'זהו טקסט ממפרט ביטוח ישראלי. חלץ את כל קודי הנספחים (מספרים בני 4-6 ספרות).\n'
+        'זהו טקסט ממפרט ביטוח ישראלי. חלץ את כל קודי הנספחים (מספרים בני 4-6 ספרות) שמופיעים ברשימת '
+        'הנספחים/הכיסויים של הפוליסה. אל תכלול סכומים, תאריכים, מספרי פוליסה או מספרי טלפון.\n'
         'החזר JSON בלבד: {"annex_codes": ["8713","6792"]}\n'
-        f'טקסט:\n{text[:4000]}'
+        f'טקסט:\n{text[:40000]}'
     )
-    resp = client.messages.create(
-        model="claude-sonnet-4-6", max_tokens=256,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        resp = _claude_create(max_tokens=512, messages=[{"role": "user", "content": prompt}])
+    except Exception as e:
+        print(f"[landing] _extract_annex_codes: {e}")
+        st.error(f"❌ לא הצלחנו לזהות נספחים אוטומטית. {_anthropic_error_he(e)}")
+        return []
     raw = re.sub(r"```json|```", "", resp.content[0].text).strip()
     try:
-        return json.loads(raw).get("annex_codes", [])
+        codes = json.loads(raw).get("annex_codes", [])
     except Exception:
         m = re.search(r"\[.*?\]", raw, re.DOTALL)
-        return json.loads(m.group()) if m else []
+        codes = json.loads(m.group()) if m else []
+    return sorted({str(c).strip() for c in codes if re.fullmatch(r"\d{4,6}", str(c).strip())})
 
 
 def _validate_teudat_zehut(tz: str) -> bool:
@@ -1368,15 +1405,21 @@ def _render_admin_content(agent: dict):
                 ]
                 with st.chat_message("assistant"):
                     with st.spinner("חושב..."):
-                        resp = _claude().messages.create(
-                            model="claude-sonnet-4-6",
-                            max_tokens=1024,
-                            system="\n".join(system_lines),
-                            messages=history,
-                        )
-                        answer = resp.content[0].text
+                        try:
+                            resp = _claude_create(
+                                max_tokens=1024,
+                                system="\n".join(system_lines),
+                                messages=history,
+                            )
+                            answer = resp.content[0].text
+                        except Exception as e:
+                            print(f"[landing] agent bot chat: {e}")
+                            answer = f"❌ {_anthropic_error_he(e)}"
                     st.markdown(answer)
-                st.session_state.agent_bot_messages.append({"role": "assistant", "content": answer})
+                if not answer.startswith("❌"):
+                    st.session_state.agent_bot_messages.append({"role": "assistant", "content": answer})
+                else:
+                    st.session_state.agent_bot_messages.pop()
 
             if st.session_state.agent_bot_messages:
                 if st.button("🗑️ נקה שיחה", key="clear_bot_chat"):
