@@ -6,3 +6,4 @@ pypdf>=4.0.0
 supabase==2.7.4
 postgrest==0.16.8
 storage3==0.7.7
+python-bidi>=0.6

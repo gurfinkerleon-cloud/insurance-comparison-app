@@ -21,6 +21,8 @@ from datetime import datetime, timedelta
 import requests
 from supabase import create_client, Client
 
+from modules.hebrew_text import fix_visual_hebrew
+
 
 # ── PASSWORD HASHING ─────────────────────────────────────────────────────────
 _PBKDF2_ITER = 200_000
@@ -421,6 +423,32 @@ class InsuranceClientDB:
             res = self.client.table("master_annexes").insert(data).execute()
             return res.data[0]["id"] if res.data else None
 
+    def repair_reversed_annexes(self) -> list[str]:
+        """One-off repair: annex texts saved before the Hebrew-order fix were stored reversed
+        ("חפסנ" instead of "נספח"), so the bot couldn't find words in them. Fixes them in place.
+        Only rows detected as visual-order are touched. Returns the fixed annex codes."""
+        fixed = []
+        try:
+            rows = self.client.table("master_annexes").select("id, annex_code, annex_name, full_text").execute().data or []
+        except Exception as e:
+            print(f"[InsuranceClientDB] repair_reversed_annexes: {e}")
+            return fixed
+        for r in rows:
+            text = r.get("full_text") or ""
+            new_text = fix_visual_hebrew(text)
+            name = r.get("annex_name") or ""
+            new_name = fix_visual_hebrew(name, min_words=1)
+            if new_text == text and new_name == name:
+                continue
+            try:
+                self.client.table("master_annexes").update(
+                    {"full_text": new_text, "annex_name": new_name}
+                ).eq("id", r["id"]).execute()
+                fixed.append(r.get("annex_code", ""))
+            except Exception as e:
+                print(f"[InsuranceClientDB] repair annex {r.get('annex_code')}: {e}")
+        return fixed
+
     def has_annex(self, annex_code: str) -> bool:
         try:
             res = self.client.table("master_annexes").select("id").eq("annex_code", annex_code).limit(1).execute()
@@ -456,8 +484,10 @@ class InsuranceClientDB:
         if not todo:
             return [], skipped
         company_id = self.find_company_id(company) if company else None
+        annex_name = fix_visual_hebrew((annex_name or "").strip(), min_words=1)
+        full_text = fix_visual_hebrew(full_text)
         ok, _ = self.upsert_master_annex(
-            todo[0], (annex_name or "").strip() or f"נספח {todo[0]}", full_text,
+            todo[0], annex_name or f"נספח {todo[0]}", full_text,
             company_id=company_id, alias_codes=todo[1:], version_year=version_year,
         )
         return (todo, skipped) if ok else ([], skipped + todo)

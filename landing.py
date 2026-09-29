@@ -17,6 +17,7 @@ from anthropic import Anthropic
 from dotenv import load_dotenv
 
 from modules.insurance_client import InsuranceClientDB, is_hashed, verify_password
+from modules.hebrew_text import fix_visual_hebrew
 
 try:
     import pdfplumber
@@ -353,6 +354,7 @@ def _claude() -> Anthropic:
 
 
 def _extract_pdf_text(pdf_bytes: bytes) -> str:
+    """PDF → text in logical Hebrew order (many insurer PDFs come out reversed, see modules/hebrew_text.py)."""
     if not PDF_SUPPORT:
         return ""
     # Try pdfplumber first, fall back to pypdf for complex PDFs
@@ -366,7 +368,7 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
                     parts.append("")
             text = "\n".join(parts)
             if text.strip():
-                return text
+                return fix_visual_hebrew(text)
     except Exception:
         pass
     try:
@@ -380,7 +382,7 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
                 parts.append("")
         text = "\n".join(parts)
         if text.strip():
-            return text
+            return fix_visual_hebrew(text)
     except Exception:
         pass
     raise ValueError("לא ניתן לקרוא את קובץ ה-PDF. ייתכן שהוא סרוק או מוגן.")
@@ -1539,6 +1541,11 @@ def page_agent_dashboard():
         _agent_logout()
 
 
+# The in-app bot gets the annex texts in its prompt. Coverage details are often deep in the
+# document (physiotherapy was on page 6 of 10), so send whole annexes, within a total budget.
+CHAT_TEXT_PER_ANNEX = 40000
+CHAT_TEXT_BUDGET = 160000
+
 AUTO_YEAR = "זיהוי אוטומטי"
 
 
@@ -1716,7 +1723,8 @@ def _render_client_chat(client: dict):
                     + (f", {p['company']}" if p.get("company") else "")
                     + ") ---"
                 )
-                system_lines.append(p["full_text"][:3000])
+                room = max(0, CHAT_TEXT_BUDGET - sum(len(x) for x in system_lines))
+                system_lines.append(p["full_text"][:min(CHAT_TEXT_PER_ANNEX, room)])
 
             system_lines += [
                 "",
@@ -2055,10 +2063,24 @@ def page_admin():
         st.rerun()
 
 
+@st.cache_resource(show_spinner=False)
+def _repair_library_once() -> tuple:
+    """Once per server start: fix annex texts that were saved with reversed Hebrew."""
+    try:
+        fixed = _db().repair_reversed_annexes()
+        if fixed:
+            print(f"[landing] repaired reversed Hebrew in annexes: {fixed}")
+        return tuple(fixed)
+    except Exception as e:
+        print(f"[landing] _repair_library_once: {e}")
+        return ()
+
+
 # ── ROUTER ─────────────────────────────────────────────────────────────────────
 if not (_is_privacy or _is_admin or _agent_code):
     _restore_session()
 _flush_cookie_op()
+_repair_library_once()
 _show_flash()
 
 if _is_privacy:
