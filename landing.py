@@ -690,6 +690,33 @@ def _document_messages(res: dict, info: dict) -> list[tuple[str, str]]:
     return msgs
 
 
+MAX_FILES = 20
+
+
+def _ingest_files(user_id: str, files: list, by: str) -> tuple[list[tuple[str, str]], dict]:
+    """Store and analyze several PDFs for one client. Returns (messages to flash, totals)."""
+    msgs: list[tuple[str, str]] = []
+    totals = {"codes": [], "library": [], "linked": 0, "saved_all": True, "count": 0}
+    files = list(files or [])[:MAX_FILES]
+    many = len(files) > 1
+    bar = st.progress(0.0, text=f"מעבד 0/{len(files)} מסמכים...") if many else None
+    for i, f in enumerate(files, 1):
+        data = f.getvalue()
+        info = _process_pdf(data)
+        totals["saved_all"] &= _db().upload_client_document(user_id, f.name, data, by)
+        res = _apply_document(user_id, info, by)
+        prefix = f"📄 {f.name} — " if many else ""
+        for kind, m in _document_messages(res, info):
+            msgs.append((kind, prefix + m))
+        totals["codes"] += [c for c in res["codes"] if c not in totals["codes"]]
+        totals["library"] += [c for c in res["library"] if c not in totals["library"]]
+        totals["linked"] += res["linked"]
+        totals["count"] += 1
+        if bar:
+            bar.progress(i / len(files), text=f"מעבד {i}/{len(files)} מסמכים...")
+    return msgs, totals
+
+
 def page_choose():
     """Landing: choose client or agent registration."""
     left, right = st.columns([1, 1])
@@ -848,21 +875,24 @@ def page_form():
                     idx = options.index(choice) - 1
                     selected_agent_id = agents[idx]["id"]
 
-        uploaded = st.file_uploader("העלאת קובץ PDF (רשות)", type=["pdf"])
+        uploads = st.file_uploader("העלאת קובצי PDF — פוליסה ונספחים (רשות, אפשר כמה ביחד)", type=["pdf"],
+                                   accept_multiple_files=True)
 
         annex_codes: list[str] = []
-        pdf_bytes: bytes = b""
-        pdf_info: dict | None = None
-        if uploaded and PDF_SUPPORT:
-            pdf_bytes = uploaded.getvalue()
-            pdf_info = _process_pdf(pdf_bytes)
-            annex_codes = pdf_info["codes"]
-            if pdf_info.get("error"):
-                st.error(f"❌ {pdf_info['error']}")
-            elif pdf_info["doc_type"] == "annex" and annex_codes:
-                st.success(f"זוהה מסמך של נספח: {' · '.join(annex_codes)}")
-            elif annex_codes:
-                st.success(f"זוהו {len(annex_codes)} נספחים: {' · '.join(annex_codes)}")
+        pdf_items: list[tuple] = []  # (uploaded file, bytes, info)
+        if uploads and PDF_SUPPORT:
+            for up in list(uploads)[:MAX_FILES]:
+                data = up.getvalue()
+                info = _process_pdf(data)
+                pdf_items.append((up, data, info))
+                annex_codes += [c for c in info["codes"] if c not in annex_codes]
+                label = f"{up.name}: " if len(uploads) > 1 else ""
+                if info.get("error"):
+                    st.error(f"❌ {label}{info['error']}")
+                elif info["doc_type"] == "annex" and info["codes"]:
+                    st.success(f"{label}זוהה מסמך של נספח: {' · '.join(info['codes'])}")
+                elif info["codes"]:
+                    st.success(f"{label}זוהו {len(info['codes'])} נספחים: {' · '.join(info['codes'])}")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -897,10 +927,10 @@ def page_form():
                     st.session_state.reg_phone = clean_phone
                     st.session_state.reg_user_id = result
                     st.session_state.annex_count = len(annex_codes)
-                    if pdf_bytes:
-                        db.upload_client_document(result, uploaded.name, pdf_bytes, "client")
-                    if pdf_info and pdf_info["doc_type"] == "annex":
-                        _apply_document(result, pdf_info, "client")  # fills the library if the code is missing
+                    for up, data, info in pdf_items:
+                        db.upload_client_document(result, up.name, data, "client")
+                        if info["doc_type"] == "annex":
+                            _apply_document(result, info, "client")  # fills the library if the code is missing
                     if selected_agent_id:
                         db.notify_agent_new_client(selected_agent_id, result)
                     _send_otp(clean_phone)
@@ -1126,20 +1156,19 @@ def page_dashboard():
 
         st.markdown('<div class="section-title">📤 העלאת מסמכים</div>', unsafe_allow_html=True)
         st.caption("פוליסה, נספחים או כל מסמך ביטוח — נזהה את הנספחים אוטומטית.")
-        client_pdf = st.file_uploader("בחר קובץ PDF", type=["pdf"], key="client_upload_pdf")
-        if client_pdf and st.button("⬆️ העלה מסמך", type="primary", use_container_width=True, key="client_upload_btn"):
-            data = client_pdf.getvalue()
+        client_pdfs = st.file_uploader("בחר קובצי PDF (אפשר כמה ביחד)", type=["pdf"],
+                                       accept_multiple_files=True, key="client_upload_pdf")
+        if client_pdfs and st.button(f"⬆️ העלה {len(client_pdfs)} מסמכים" if len(client_pdfs) > 1 else "⬆️ העלה מסמך",
+                                     type="primary", use_container_width=True, key="client_upload_btn"):
             uid = st.session_state.reg_user_id
-            info = _process_pdf(data)
-            _db().upload_client_document(uid, client_pdf.name, data, "client")
-            res = _apply_document(uid, info, "client")
+            msgs, tot = _ingest_files(uid, client_pdfs, "client")
             if profile and profile.get("agent_id"):
-                _db().notify_agent_client_upload(profile["agent_id"], uid, res["codes"], res["library"])
-            _flash("success", "✅ המסמך נשמר.")
-            for m in _document_messages(res, info):
-                if m[0] == "warning":
-                    m = ("info", "לא זוהו במסמך קודי נספחים — הסוכן שלך יעבור עליו.")
-                _flash(*m)
+                _db().notify_agent_client_upload(profile["agent_id"], uid, tot["codes"], tot["library"])
+            _flash("success", "✅ המסמך נשמר." if tot["count"] == 1 else f"✅ {tot['count']} מסמכים נשמרו.")
+            for kind, m in msgs:
+                if kind == "warning":
+                    kind, m = "info", m.replace("לא זוהו קודי נספחים במסמך.", "לא זוהו במסמך קודי נספחים — הסוכן שלך יעבור עליו.")
+                _flash(kind, m)
             st.rerun()
 
         with st.expander("📁 המסמכים שלי", expanded=False):
@@ -1570,45 +1599,61 @@ def _annex_upload_form(key: str, code: str = ""):
         versions = _db().get_annex_versions(typed[0])
         if versions:
             st.caption(f"גרסאות קיימות במאגר ל-{typed[0]}: {' · '.join(str(y) for y in versions)}")
-    pdf = st.file_uploader("PDF של הנספח", type=["pdf"], key=f"{key}_pdf")
-    if st.button("💾 שמור נספח במאגר", type="primary", key=f"{key}_save"):
-        if not pdf:
+    if code:
+        pdfs = st.file_uploader("PDF של הנספח", type=["pdf"], key=f"{key}_pdf")
+        pdfs = [pdfs] if pdfs else []
+    else:
+        pdfs = st.file_uploader("PDF של הנספחים (אפשר כמה ביחד)", type=["pdf"],
+                                accept_multiple_files=True, key=f"{key}_pdf") or []
+        if len(pdfs) > 1:
+            st.caption("כמה קבצים: הקוד, השם והשנה מזוהים אוטומטית מכל קובץ.")
+    if st.button("💾 שמור במאגר", type="primary", key=f"{key}_save"):
+        if not pdfs:
             st.error("בחר קובץ PDF של הנספח.")
-        elif _save_annex_pdf(pdf.getvalue(), typed, name_in, year_choice):
-            st.rerun()
+            return
+        many = len(pdfs) > 1
+        bar = st.progress(0.0, text=f"מעבד 0/{len(pdfs)}...") if many else None
+        for i, f in enumerate(pdfs[:MAX_FILES], 1):
+            if many:
+                _save_annex_pdf(f.getvalue(), [], "", AUTO_YEAR, label=f"📄 {f.name} — ")
+                bar.progress(i / len(pdfs), text=f"מעבד {i}/{len(pdfs)}...")
+            else:
+                _save_annex_pdf(f.getvalue(), typed, name_in, year_choice)
+        st.rerun()
 
 
-def _save_annex_pdf(pdf_bytes: bytes, typed: list[str], name: str, year_choice) -> bool:
-    """Library upload by the agent. Saves under the typed codes + the codes in the document's own header."""
+def _save_annex_pdf(pdf_bytes: bytes, typed: list[str], name: str, year_choice, label: str = "") -> bool:
+    """Library upload by the agent. Saves under the typed codes + the codes in the document's own header.
+    All feedback goes through _flash (the caller reruns)."""
     info = _process_pdf(pdf_bytes)
     text = info.get("text", "")
     if not text.strip():
-        st.error(f"❌ {info.get('error') or 'לא ניתן לקרוא טקסט מהקובץ.'}")
+        _flash("error", f"❌ {label}{info.get('error') or 'לא ניתן לקרוא טקסט מהקובץ.'}")
         return False
     detected = info["codes"] if info["doc_type"] == "annex" else []
     codes = list(typed)
     if detected and (not typed or set(detected) & set(typed)):
         codes += detected
     elif detected:
-        _flash("warning", f"⚠️ בכותרת הקובץ מופיעים קודים אחרים ({' · '.join(detected)}) — "
+        _flash("warning", f"⚠️ {label}בכותרת הקובץ מופיעים קודים אחרים ({' · '.join(detected)}) — "
                           f"נשמר רק תחת {' · '.join(typed)}. ודא שזה הנספח הנכון.")
     for c in typed:
         codes += _extract_related_codes(text, c)
     codes = list(dict.fromkeys(codes))
     if not codes:
-        st.error("לא הצלחנו לזהות את קוד הנספח — הזן אותו ידנית." +
-                 (f" ({info['error']})" if info.get("error") else ""))
+        _flash("error", f"❌ {label}לא הצלחנו לזהות את קוד הנספח — העלה את הקובץ לבד והזן את הקוד ידנית." +
+               (f" ({info['error']})" if info.get("error") else ""))
         return False
     if info["doc_type"] == "policy":
-        _flash("warning", "⚠️ הקובץ נראה כמו מפרט פוליסה של לקוח ולא כמו חוברת תנאים של נספח — בדוק שהעלית את הקובץ הנכון.")
+        _flash("warning", f"⚠️ {label}הקובץ נראה כמו מפרט פוליסה של לקוח ולא כמו חוברת תנאים של נספח — בדוק שהעלית את הקובץ הנכון.")
     year = year_choice if year_choice != AUTO_YEAR else (info.get("year") or datetime.now().year)
     saved, _ = _db().add_annex_document(
         codes, (name or "").strip() or info.get("name", ""), text, year, info.get("company", ""), overwrite=True
     )
     if not saved:
-        st.error("שגיאה בשמירת הנספח במאגר.")
+        _flash("error", f"❌ {label}שגיאה בשמירת הנספח במאגר.")
         return False
-    _flash("success", f"✅ נספח {' · '.join(saved)} ({year}) נשמר במאגר — כל הלקוחות עם הקודים האלה עודכנו.")
+    _flash("success", f"✅ {label}נספח {' · '.join(saved)} ({year}) נשמר במאגר — כל הלקוחות עם הקודים האלה עודכנו.")
     return True
 
 
@@ -1652,24 +1697,23 @@ def _render_client_card(client: dict, agent_id: str):
 
     st.markdown(f"#### 📄 העלה פוליסה ל{client.get('full_name','לקוח')}")
     st.caption("הקובץ נשמר בתיק של הלקוח הזה. הנספחים שבו יזוהו אוטומטית, ואם זה מסמך של נספח (חוברת תנאים) — הוא ייכנס גם למאגר.")
-    pdf_file = st.file_uploader("בחר קובץ PDF", type=["pdf"], key=f"admin_pdf_{client['id'][:8]}")
-    if pdf_file and st.button("⬆️ שמור בתיק הלקוח וזהה נספחים", type="primary", key="admin_pdf_save"):
-        data = pdf_file.getvalue()
-        info = _process_pdf(data)
-        saved = _db().upload_client_document(client["id"], pdf_file.name, data, "agent")
-        res = _apply_document(client["id"], info, "agent")
-        msgs = _document_messages(res, info)
-        if res["codes"]:
+    pdf_files = st.file_uploader("בחר קובצי PDF (אפשר כמה ביחד — פוליסה ונספחים)", type=["pdf"],
+                                 accept_multiple_files=True, key=f"admin_pdf_{client['id'][:8]}")
+    if pdf_files and st.button("⬆️ שמור בתיק הלקוח וזהה נספחים", type="primary", key="admin_pdf_save"):
+        msgs, tot = _ingest_files(client["id"], pdf_files, "agent")
+        if tot["codes"]:
             after = _db().get_user_policies(client["id"])
-            now_missing = [p["annex_code"] for p in after if not p.get("has_data") and p["annex_code"] in res["codes"]]
+            now_missing = [p["annex_code"] for p in after if not p.get("has_data") and p["annex_code"] in tot["codes"]]
             if now_missing:
                 msgs.append(("warning", f"⏳ חסרים במאגר: {' · '.join(now_missing)} — העלה אותם כדי שהבוט יוכל לענות."))
-            if res["linked"]:
+            if tot["linked"]:
                 ready_count = len([p for p in after if p.get("has_data")])
                 if ready_count:
                     _db().send_ready(client["phone_number"], client["full_name"], ready_count)
-        if not saved:
-            msgs.append(("warning", "⚠️ הקובץ עצמו לא נשמר באחסון (בדוק את הגדרות Supabase Storage)."))
+        if not tot["saved_all"]:
+            msgs.append(("warning", "⚠️ חלק מהקבצים לא נשמרו באחסון (בדוק את הגדרות Supabase Storage)."))
+        if tot["count"] > 1:
+            msgs.insert(0, ("success", f"✅ {tot['count']} מסמכים נשמרו בתיק הלקוח."))
         for m in msgs:
             _flash(*m)
         st.rerun()
@@ -1769,7 +1813,7 @@ def _render_new_client_form(agent: dict):
             name = st.text_input("שם מלא")
             phone = st.text_input("טלפון נייד", placeholder="050-1234567")
             tz = st.text_input("תעודת זהות (רשות)", max_chars=9)
-            pdf = st.file_uploader("פוליסה PDF (רשות)", type=["pdf"])
+            pdfs = st.file_uploader("פוליסה ונספחים PDF (רשות, אפשר כמה ביחד)", type=["pdf"], accept_multiple_files=True)
             send_welcome = st.checkbox("שלח ללקוח הודעת וואטסאפ עם מספר הבוט", value=True)
             submitted = st.form_submit_button("✅ צור לקוח", type="primary")
         if not submitted:
@@ -1800,16 +1844,14 @@ def _render_new_client_form(agent: dict):
             else:
                 st.error("המספר כבר רשום אצל סוכן אחר.")
             return
-        data = pdf.getvalue() if pdf else b""
-        info = _process_pdf(data) if data else None
         ok, user_id = _db().register_user_with_policies(clean, name.strip(), [], tz.strip(), agent["id"])
         if not ok:
             st.error(user_id)
             return
         _flash("success", f"✅ {name.strip()} נרשם")
-        if data:
-            _db().upload_client_document(user_id, pdf.name, data, "agent")
-            for m in _document_messages(_apply_document(user_id, info, "agent"), info):
+        if pdfs:
+            msgs, _ = _ingest_files(user_id, pdfs, "agent")
+            for m in msgs:
                 _flash(*m)
         if send_welcome:
             _db().send_welcome_from_agent(clean, name.strip(), agent.get("full_name", ""), BASE_URL)
