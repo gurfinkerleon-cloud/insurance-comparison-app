@@ -56,10 +56,11 @@ def _load_secret(key: str) -> str | None:
         import streamlit as st
         val = st.secrets.get(key)
         if val:
-            return val
+            return str(val).strip().strip('"').strip("'").strip()  # tolerate stray spaces/quotes from copy-paste
     except Exception:
         pass
-    return os.getenv(key)
+    val = os.getenv(key)
+    return val.strip() if val else val
 
 
 class InsuranceClientDB:
