@@ -784,15 +784,33 @@ class InsuranceClientDB:
 
     # ── WHATSAPP ──────────────────────────────────────────────────────────────
 
+    last_whatsapp_error = ""
+
+    @staticmethod
+    def _green_error_he(status: int, body: str) -> str:
+        body = (body or "").strip()[:160]
+        if status in (401, 403):
+            return f"Green API דחה את הבקשה ({status}) — הטוקן או מספר ה-instance ב-Secrets שגויים."
+        if status == 404:
+            return "Green API: הכתובת לא נמצאה (404) — בדוק את GREEN_API_URL / GREEN_API_INSTANCE ב-Secrets."
+        if status == 466:
+            return ("Green API: נגמרה המכסה של החבילה (466). בחבילה החינמית (Developer) אפשר לשלוח רק למספר "
+                    "מצומצם של מספרים בחודש — צריך לשדרג את ה-instance.")
+        if status == 429:
+            return "Green API: יותר מדי בקשות (429) — נסה שוב בעוד דקה."
+        return f"Green API החזיר שגיאה {status}: {body}"
+
     def _whatsapp(self, phone: str, message: str) -> bool:
+        """Send a WhatsApp message via Green API. On failure, the reason is in self.last_whatsapp_error."""
         if not self._green_instance or not self._green_token:
+            self.last_whatsapp_error = "GREEN_API_INSTANCE / GREEN_API_TOKEN לא מוגדרים ב-Secrets."
             return False
         digits = re.sub(r"\D", "", phone)
         if digits.startswith("0"):
             digits = "972" + digits[1:]
         # Use instance-specific subdomain (e.g. 7107552876 → 7107.api.greenapi.com)
         subdomain = self._green_instance[:4]
-        base = _load_secret("GREEN_API_URL") or f"https://{subdomain}.api.greenapi.com"
+        base = (_load_secret("GREEN_API_URL") or f"https://{subdomain}.api.greenapi.com").rstrip("/")
         url = f"{base}/waInstance{self._green_instance}/sendMessage/{self._green_token}"
         try:
             r = requests.post(
@@ -800,9 +818,16 @@ class InsuranceClientDB:
                 json={"chatId": f"{digits}@c.us", "message": message},
                 timeout=10,
             )
-            return r.status_code == 200
-        except Exception:
+        except Exception as e:
+            self.last_whatsapp_error = f"אין חיבור ל-Green API ({type(e).__name__}) — בדוק את GREEN_API_URL."
+            print(f"[InsuranceClientDB] _whatsapp: {e}")
             return False
+        if r.status_code == 200:
+            self.last_whatsapp_error = ""
+            return True
+        self.last_whatsapp_error = self._green_error_he(r.status_code, r.text)
+        print(f"[InsuranceClientDB] _whatsapp {r.status_code}: {r.text[:300]}")
+        return False
 
     def send_otp(self, phone: str, code: str) -> bool:
         return self._whatsapp(

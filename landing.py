@@ -524,7 +524,17 @@ def _send_otp(phone: str) -> str:
     st.session_state._otp_exp = datetime.now() + timedelta(minutes=10)
     sent = _db().send_otp(phone, code)
     st.session_state._otp_sent = sent
+    st.session_state._otp_error = "" if sent else (_db().last_whatsapp_error or "שגיאה לא ידועה")
     return code
+
+
+def _otp_failed_notice(agent: bool = False):
+    """Shown when the WhatsApp code could not be sent. Never shows the code itself."""
+    if st.session_state.get("_otp_sent", True):
+        return
+    st.error("❌ לא הצלחנו לשלוח את קוד האימות בוואטסאפ. נסה שוב בעוד רגע"
+             + (", או היכנס עם אימייל וסיסמה." if agent else "."))
+    st.caption(f"פרטים טכניים: {st.session_state.get('_otp_error', '')}")
 
 
 def _auto_agent_code(name: str, email: str) -> str:
@@ -926,12 +936,7 @@ def page_verify(is_new: bool):
             f"שלחנו קוד בן 6 ספרות לוואטסאפ שלך ({st.session_state.reg_phone})",
         )
 
-        if not st.session_state.get("_otp_sent", True):
-            st.warning(
-                f"⚠️ WhatsApp לא מוגדר — קוד האימות שלך לבדיקה: "
-                f"**{st.session_state._otp}**",
-                icon=None,
-            )
+        _otp_failed_notice()
 
         code = st.text_input("קוד אימות", placeholder="123456", max_chars=6)
         st.markdown("<br>", unsafe_allow_html=True)
@@ -955,7 +960,9 @@ def page_verify(is_new: bool):
         with col1:
             if st.button("שלח קוד מחדש"):
                 _send_otp(st.session_state.reg_phone)
-                st.success("קוד חדש נשלח!")
+                if st.session_state._otp_sent:
+                    _flash("success", "✅ קוד חדש נשלח לוואטסאפ.")
+                st.rerun()
         with col2:
             if st.button("← חזרה"):
                 st.session_state.step = "form" if is_new else "login"
@@ -1043,8 +1050,7 @@ def page_dashboard():
                             st.rerun()
                 else:
                     st.caption(f"שלחנו קוד לוואטסאפ של {pending_phone}")
-                    if not st.session_state.get("_otp_sent", True):
-                        st.warning(f"⚠️ WhatsApp לא מוגדר — קוד לבדיקה: **{st.session_state._otp}**")
+                    _otp_failed_notice()
                     phone_code = st.text_input("קוד אימות", max_chars=6, key="client_phone_code")
                     c1, c2 = st.columns(2)
                     with c1:
@@ -1269,8 +1275,7 @@ def page_agent_verify_otp():
     with right:
         _logo("אימות סוכן", f"שלחנו קוד לוואטסאפ שלך ({st.session_state.reg_phone})")
 
-        if not st.session_state.get("_otp_sent", True):
-            st.warning(f"⚠️ WhatsApp לא מוגדר — קוד: **{st.session_state._otp}**", icon=None)
+        _otp_failed_notice(agent=True)
 
         code = st.text_input("קוד אימות", placeholder="123456", max_chars=6)
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1297,7 +1302,9 @@ def page_agent_verify_otp():
         with col2:
             if st.button("שלח קוד מחדש"):
                 _send_otp(st.session_state.reg_phone)
-                st.success("קוד חדש נשלח!")
+                if st.session_state._otp_sent:
+                    _flash("success", "✅ קוד חדש נשלח לוואטסאפ.")
+                st.rerun()
 
 
 def page_agent_reset_password():
