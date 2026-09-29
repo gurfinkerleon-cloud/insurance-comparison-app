@@ -222,7 +222,7 @@ def _bot_whatsapp_number() -> str:
 
 # ── PERSISTENT LOGIN (signed cookie) ─────────────────────────────────────────
 SESSION_COOKIE = "bb_session"
-SESSION_DAYS = 7
+SESSION_DAYS = 90  # renewed on every visit, so an active user stays logged in
 
 
 def _session_secret() -> bytes:
@@ -311,6 +311,7 @@ def _restore_session():
             st.session_state.reg_user_id = profile["id"]
             st.session_state.reg_phone = profile.get("phone_number", "")
             st.session_state.reg_name = profile.get("full_name", "")
+            _remember_login("c", profile["id"])
             st.session_state.step = "dashboard"
 
 
@@ -433,8 +434,13 @@ def _anthropic_error_he(e: Exception) -> str:
 
 
 # Same wording as the WhatsApp bot prompt (whatsapp_flow.json → AI Agent)
-AI_NOTE_CLIENT = ("ℹ️ התשובה מתייחסת לנספחים שבפוליסה שלך ונוצרה ע״י בינה מלאכותית, ולכן אינה מהווה אישור כיסוי. "
-                  "לפני כל פעולה — מומלץ לוודא מול הסוכן או חברת הביטוח.")
+TYPO_RULE = ("השואל עשוי לכתוב עם שגיאות כתיב, קיצורים, סלנג או תעתיק (למשל 'פיזו', 'פזיותרפיה', 'אם אר איי', "
+             "'רופא עיניים') — הבן את הכוונה וחפש בנספחים לפי המשמעות ולפי מילים נרדפות (החזר = שיפוי, "
+             "פיזיו = פיזיותרפיה), לא לפי התאמה מדויקת של מילים. אם באמת לא ברור — שאל 'התכוונת ל...?'.")
+POLICY_CHANGE_NOTE = ("המידע כאן רלוונטי עבורך כל עוד לא ביצעת שינוי בפוליסה. אם שינית משהו מאז "
+                      "(הוספת, ביטלת או עדכנת כיסוי) — העלה את הפוליסה המעודכנת או עדכן את הסוכן שלך.")
+AI_NOTE_CLIENT = ("ℹ️ התשובה מתייחסת לנספחים שבפוליסה שלך כפי שהיא במערכת (אם לא בוצע בה שינוי מאז) ונוצרה ע״י "
+                  "בינה מלאכותית, ולכן אינה מהווה אישור כיסוי. לפני כל פעולה — מומלץ לוודא מול הסוכן או חברת הביטוח.")
 AI_NOTE_AGENT = "ℹ️ נוצר ע״י בינה מלאכותית על סמך הנספחים של הלקוח — מומלץ לאמת מול נוסח הפוליסה לפני שמתחייבים ללקוח."
 
 ANALYZE_PROMPT = """אתה מנתח מסמכי ביטוח ישראליים. קבע מה סוג המסמך:
@@ -1137,6 +1143,7 @@ def page_dashboard():
             ready = [p for p in policies if p["has_data"]]
             pending = [p for p in policies if not p["has_data"]]
             st.markdown(f'<div class="section-title">הנספחים שלך ({len(policies)})</div>', unsafe_allow_html=True)
+            st.info(POLICY_CHANGE_NOTE, icon="📌")
             for p in ready:
                 st.markdown(f"""
 <div class="policy-card">
@@ -1774,6 +1781,7 @@ def _render_client_chat(client: dict):
                 "",
                 "ענה בעברית. הסתמך על הנספחים. אם המידע לא קיים, ציין זאת בבירור — לעולם אל תנחש מספרים או תנאים.",
                 "אל תיתן ייעוץ רפואי (אבחנות, בדיקות, טיפולים) — התייחס רק למה שהנספחים מכסים.",
+                TYPO_RULE,
                 "בסוף כל תשובה שעוסקת בכיסוי, סכומים, השתתפות עצמית, תנאים או זכאות, הוסף בשורה נפרדת בדיוק:",
                 AI_NOTE_AGENT,
             ]
@@ -1859,6 +1867,26 @@ def _render_new_client_form(agent: dict):
         st.rerun()
 
 
+def _render_library_section():
+    """Shared נספחים library: upload annexes without any client + see what is already in it."""
+    lib = _db().list_library()
+    with st.expander(f"📚 מאגר הנספחים ({len(lib)}) — העלאת נספחים בלי לקוח", expanded=False):
+        st.caption("נספח שנכנס למאגר מופיע אוטומטית כ-✅ אצל כל לקוח שיש לו את הקוד — גם אצל לקוחות שיירשמו בעתיד. "
+                   "אפשר להעלות כמה קבצים ביחד; הקוד, השם והשנה מזוהים מכל קובץ.")
+        _annex_upload_form("nispaj")
+        if lib:
+            st.markdown("---")
+            q = st.text_input("🔎 חיפוש במאגר (קוד, שם או חברה)", key="lib_search", placeholder="2210 / פיזיותרפיה / מגדל")
+            shown = [r for r in lib if not q.strip() or q.strip() in f"{r['annex_code']} {r['annex_name']} {r['company']}"]
+            for r in shown[:60]:
+                meta = " · ".join(str(x) for x in (r["company"], r["version_year"]) if x)
+                st.markdown(f"✅ **{r['annex_code']}** — {r['annex_name']}"
+                            + (f" <span style='color:#9CA3AF;font-size:0.8rem'>{meta}</span>" if meta else ""),
+                            unsafe_allow_html=True)
+            if len(shown) > 60:
+                st.caption(f"ועוד {len(shown) - 60} — חפש כדי לצמצם.")
+
+
 def _render_admin_content(agent: dict):
     """Agent workspace. agent['id'] empty = main admin (sees all clients)."""
     agent_id = agent.get("id", "")
@@ -1871,6 +1899,9 @@ def _render_admin_content(agent: dict):
     # ── NEW CLIENT ────────────────────────────────────────────────────────────
     if agent_id:
         _render_new_client_form(agent)
+
+    # ── ANNEX LIBRARY (upload without a client) ───────────────────────────────
+    _render_library_section()
 
     # ── MY CLIENTS ────────────────────────────────────────────────────────────
     clients = _db().get_agent_clients(agent_id)
@@ -1977,11 +2008,6 @@ def _render_admin_content(agent: dict):
             ):
                 _annex_upload_form(f"pending_{item['annex_code']}", item["annex_code"])
 
-    # ── ANY ANNEX ─────────────────────────────────────────────────────────────
-    st.markdown("---")
-    with st.expander("➕ הוסף / עדכן נספח במאגר (כל קוד)", expanded=False):
-        st.caption("מאגר משותף — כל הלקוחות שיש להם את הקוד יתעדכנו אוטומטית.")
-        _annex_upload_form("nispaj")
 
 
 

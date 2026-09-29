@@ -449,6 +449,26 @@ class InsuranceClientDB:
                 print(f"[InsuranceClientDB] repair annex {r.get('annex_code')}: {e}")
         return fixed
 
+    def list_library(self) -> list[dict]:
+        """Every annex in master_annexes: [{annex_code, annex_name, version_year, company}], sorted by code."""
+        try:
+            rows = (self.client.table("master_annexes")
+                    .select("annex_code, annex_name, version_year, insurance_companies(name)")
+                    .execute().data or [])
+        except Exception:
+            try:
+                rows = self.client.table("master_annexes").select("annex_code, annex_name, version_year").execute().data or []
+            except Exception as e:
+                print(f"[InsuranceClientDB] list_library: {e}")
+                return []
+        out = [{
+            "annex_code": str(r.get("annex_code") or ""),
+            "annex_name": r.get("annex_name") or "",
+            "version_year": r.get("version_year") or "",
+            "company": (r.get("insurance_companies") or {}).get("name", "") if isinstance(r.get("insurance_companies"), dict) else "",
+        } for r in rows]
+        return sorted(out, key=lambda r: (r["annex_code"], str(r["version_year"])))
+
     def has_annex(self, annex_code: str) -> bool:
         try:
             res = self.client.table("master_annexes").select("id").eq("annex_code", annex_code).limit(1).execute()
