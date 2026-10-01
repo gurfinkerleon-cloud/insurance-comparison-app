@@ -183,6 +183,12 @@ for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
+AGENT_BENEFITS = [
+    "הלקוחות נרשמים דרך הקישור האישי שלך",
+    "הבוט עונה בשמך — לפי הנספחים של כל לקוח",
+    "רואים מה חסר לכל לקוח ומקבלים התראות",
+    "מאגר נספחים משותף — מעלים פעם אחת",
+]
 BENEFITS = [
     "מבוסס על הפוליסה האישית שלך",
     "תשובות מיידיות בעברית, ערבית ורוסית",
@@ -565,22 +571,50 @@ def _all_agents() -> list[dict]:
 
 
 # ── HERO PANEL ─────────────────────────────────────────────────────────────────
-def _hero():
+def _hero(audience: str = "client"):
+    """audience='agent' on the general/agent pages (BituachBot is a tool for licensed agents),
+    'client' on the pages a client reaches through their agent's link."""
+    items = AGENT_BENEFITS if audience == "agent" else BENEFITS
     bullets = "".join(
         f'<div class="benefit-item">'
         f'<span class="benefit-check">✓</span>'
         f'<span class="benefit-text">{b}</span>'
         f'</div>'
-        for b in BENEFITS
+        for b in items
     )
+    if audience == "agent":
+        head = """<div class="badge">🛡️ כלי עבודה לסוכני ביטוח מורשים</div>
+<h1 class="hero-title">עם <span>BituachBot</span><br>הלקוחות שלך מקבלים<br>תשובות על הפוליסה, 24/7</h1>
+<p class="hero-sub">עוזר דיגיטלי בוואטסאפ שעונה ללקוחות שלך בשמך — לפי הנספחים בפוליסה של כל לקוח — ואתה רואה הכל בפאנל.</p>"""
+    else:
+        head = """<div class="badge">💬 העוזר הדיגיטלי של סוכן הביטוח שלך</div>
+<h1 class="hero-title">עם <span>BituachBot</span><br>תבין סוף סוף מה<br>הביטוח שלך מכסה</h1>
+<p class="hero-sub">שלח הודעה בוואטסאפ וקבל הסבר על הפוליסה שלך — מטעם סוכן הביטוח שלך.</p>"""
     st.markdown(f"""
 <div class="circle-deco-1"></div><div class="circle-deco-2"></div>
-<div class="badge">💬 אסיסטנט ביטוח חכם בוואטסאפ</div>
-<h1 class="hero-title">עם <span>BituachBot</span><br>תבין סוף סוף מה<br>הביטוח שלך מכסה</h1>
-<p class="hero-sub">שלח הודעה בוואטסאפ וקבל תשובה מדויקת — לפי הביטוח האישי שלך.</p>
+{head}
 {bullets}
 <p class="privacy-note">🔒 המידע שלך מאובטח ומוגן לפי תקנות הפרטיות</p>
 """, unsafe_allow_html=True)
+
+
+def _clean_license(value: str) -> str:
+    """Insurance agent license number: digits only (dashes/spaces ignored), 4-12 digits."""
+    digits = re.sub(r"[\s\-/]", "", value or "")
+    return digits if re.fullmatch(r"\d{4,12}", digits) else ""
+
+
+def _license_text(agent: dict) -> str:
+    lic = (agent or {}).get("license_number")
+    return f"סוכן ביטוח מורשה · רישיון מס' {lic}" if lic else "סוכן ביטוח מורשה"
+
+
+def _agent_badge_html(agent: dict, title: str) -> str:
+    return (f'<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:12px 16px;'
+            f'margin-bottom:14px;direction:rtl;text-align:right">'
+            f'<div style="font-size:0.8rem;color:#15803D;font-weight:700">🧑‍💼 {title}</div>'
+            f'<div style="font-weight:700;color:#111827">{agent.get("full_name", "")}</div>'
+            f'<div style="font-size:0.85rem;color:#4B5563">{_license_text(agent)}</div></div>')
 
 
 def _logo(title: str, sub: str = ""):
@@ -724,57 +758,47 @@ def _ingest_files(user_id: str, files: list, by: str) -> tuple[list[tuple[str, s
 
 
 def page_choose():
-    """Landing: choose client or agent registration."""
+    """Landing. BituachBot is a tool for licensed agents: clients join only through their agent's link."""
     left, right = st.columns([1, 1])
     with left:
-        _hero()
+        _hero("agent")
     with right:
-        _logo("ברוכים הבאים!", "במה תרצה להתחיל?")
+        _logo("ברוכים הבאים!", "BituachBot — כלי עבודה לסוכני ביטוח מורשים")
         st.markdown("<br>", unsafe_allow_html=True)
 
         st.markdown("""
-<div style="display:flex;flex-direction:column;gap:16px;direction:rtl">
-  <div style="background:#F0FDF4;border:2px solid #D1FAE5;border-radius:16px;padding:24px;text-align:right;cursor:pointer">
-    <div style="font-size:2rem;margin-bottom:8px">👤</div>
-    <div style="font-weight:700;font-size:1.1rem;color:#111827;margin-bottom:6px">אני לקוח</div>
-    <div style="font-size:0.9rem;color:#6B7280">רוצה לדעת מה הביטוח שלי מכסה</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-        if st.button("המשך כלקוח", type="primary", use_container_width=True):
-            st.session_state.step = "form"
-            st.rerun()
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        st.markdown("""
-<div style="background:#F8FAFF;border:2px solid #DBEAFE;border-radius:16px;padding:24px;text-align:right">
+<div style="background:#F8FAFF;border:2px solid #DBEAFE;border-radius:16px;padding:24px;text-align:right;direction:rtl">
   <div style="font-size:2rem;margin-bottom:8px">🏢</div>
-  <div style="font-weight:700;font-size:1.1rem;color:#111827;margin-bottom:6px">אני סוכן ביטוח</div>
-  <div style="font-size:0.9rem;color:#6B7280">רוצה להציע את הכלי ללקוחות שלי</div>
+  <div style="font-weight:700;font-size:1.1rem;color:#111827;margin-bottom:6px">אני סוכן ביטוח מורשה</div>
+  <div style="font-size:0.9rem;color:#6B7280">רוצה לתת ללקוחות שלי עוזר דיגיטלי שעונה בשמי</div>
 </div>
 """, unsafe_allow_html=True)
-        if st.button("המשך כסוכן", use_container_width=True):
+        if st.button("הצטרפות כסוכן", type="primary", use_container_width=True):
             st.session_state.step = "agent_register"
             st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("כבר נרשמת? כניסה"):
+        if st.button("כבר רשום? כניסה (סוכן או לקוח)", use_container_width=True):
             st.session_state.step = "login_choose"
             st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.info("👤 לקוחות נרשמים דרך הקישור האישי שמקבלים מסוכן הביטוח שלהם.")
 
 
 def page_agent_register():
     """Agent self-registration."""
     left, right = st.columns([1, 1])
     with left:
-        _hero()
+        _hero("agent")
     with right:
         _logo("הרשמה כסוכן ביטוח", "צור את הסביבה שלך ב-BituachBot")
 
         full_name = st.text_input("שם מלא", placeholder="ישראל ישראלי")
         email = st.text_input("אימייל", placeholder="israel@example.com")
         agent_phone = st.text_input("טלפון נייד (לקבלת התראות בוואטסאפ)", placeholder="050-1234567")
+        license_in = st.text_input("מספר רישיון סוכן ביטוח (רשות שוק ההון)", placeholder="מספר הרישיון",
+                                   help="BituachBot מיועד לסוכני ביטוח מורשים בלבד. המספר מוצג ללקוחות שלך.")
         password = st.text_input("סיסמת ניהול", type="password", placeholder="בחר סיסמה חזקה")
         password2 = st.text_input("אימות סיסמה", type="password", placeholder="חזור על הסיסמה")
 
@@ -790,6 +814,9 @@ def page_agent_register():
                 errors.append("מספר טלפון לא תקין (חייב להתחיל ב-05 ולהיות בן 10 ספרות).")
             elif _db().get_agent_by_phone(clean_agent_phone):
                 errors.append("מספר הטלפון כבר רשום לסוכן אחר.")
+            clean_license = _clean_license(license_in)
+            if not clean_license:
+                errors.append("נא להזין מספר רישיון סוכן ביטוח תקין (ספרות בלבד).")
             if not password or len(password) < 6:
                 errors.append("סיסמה חייבת להכיל לפחות 6 תווים.")
             if password != password2:
@@ -801,7 +828,7 @@ def page_agent_register():
                 for _ in range(5):
                     code = _auto_agent_code(full_name.strip(), email.strip())
                     ok, result = _db().create_agent(code, full_name.strip(), password, email.strip(),
-                                                    clean_agent_phone)
+                                                    clean_agent_phone, clean_license)
                     if ok:
                         st.session_state.agent_registered_code = code
                         st.session_state.step = "agent_success"
@@ -824,7 +851,7 @@ def page_agent_success():
     base_url = "https://bituachbot.streamlit.app"
     left, right = st.columns([1, 1])
     with left:
-        _hero()
+        _hero("agent")
     with right:
         _logo("החשבון שלך מוכן! 🎉")
         st.markdown(f"""
@@ -865,21 +892,25 @@ def page_form():
     with right:
         _logo("רשום פשוט ומהיר")
 
+        if not _agent:
+            if _agent_code:
+                st.error("הקישור אינו תקין או שאינו פעיל — בקש מסוכן הביטוח שלך קישור חדש.")
+            else:
+                st.info("👤 ההרשמה ל-BituachBot נעשית דרך סוכן הביטוח שלך — בקש ממנו את הקישור האישי.")
+            if st.button("כבר רשום? כניסה", type="primary", use_container_width=True):
+                st.session_state.step = "login"
+                st.rerun()
+            if st.button("← חזרה"):
+                st.session_state.step = "choose"
+                st.rerun()
+            return
+        st.markdown(_agent_badge_html(_agent, "נרשמים דרך הסוכן"), unsafe_allow_html=True)
+
         full_name = st.text_input("שם מלא", placeholder="ישראל ישראלי")
         phone = st.text_input("טלפון נייד", placeholder="050-1234567")
         teudat_zehut = st.text_input("תעודת זהות", placeholder="123456789", max_chars=9)
 
-        # Agent selector — only show when client arrives WITHOUT an agent link
-        selected_agent_id = _agent["id"] if _agent else ""
-        if not _agent_code:
-            agents = _all_agents()
-            if agents:
-                options = ["ללא סוכן (לקוח עצמאי)"] + [f"{a['full_name']}" for a in agents]
-                choice = st.selectbox("הסוכן שלך (רשות)", options,
-                                      help="בחר את הסוכן שרשם אותך, או השאר ריק")
-                if choice != options[0]:
-                    idx = options.index(choice) - 1
-                    selected_agent_id = agents[idx]["id"]
+        selected_agent_id = _agent["id"]
 
         uploads = st.file_uploader("העלאת קובצי PDF — פוליסה ונספחים (רשות, אפשר כמה ביחד)", type=["pdf"],
                                    accept_multiple_files=True)
@@ -903,8 +934,9 @@ def page_form():
         st.markdown("<br>", unsafe_allow_html=True)
 
         privacy_ok = st.checkbox(
-            "קראתי ואני מסכים/ה ל[מדיניות הפרטיות](/?privacy=1) ולתנאי השימוש, "
-            "כולל עיבוד נתוני הביטוח שלי באמצעות בינה מלאכותית לצורך מתן שירות.",
+            "קראתי ואני מסכים/ה ל[מדיניות הפרטיות](/?privacy=1) ולתנאי השימוש, כולל עיבוד מסמכי הביטוח "
+            "ושאלותיי — שעשויים לכלול מידע רפואי — באמצעות בינה מלאכותית ובשרתים מחוץ לישראל, "
+            "לצורך מתן השירות מטעם סוכן הביטוח שלי.",
             key="privacy_consent"
         )
 
@@ -1122,6 +1154,7 @@ def page_dashboard():
 <div class="profile-box">
   <div style="font-weight:600;font-size:1rem;margin-bottom:6px">🧑‍💼 הסוכן שלך</div>
   <div style="color:#374151;font-size:0.95rem">{my_agent.get('full_name','')}{wa}</div>
+  <div style="color:#6B7280;font-size:0.82rem;margin-top:4px">{_license_text(my_agent)} · BituachBot הוא העוזר הדיגיטלי שלו</div>
 </div>""", unsafe_allow_html=True)
             else:
                 with st.expander("🧑‍💼 הסוכן שלך — לא נבחר", expanded=True):
@@ -1214,7 +1247,7 @@ def page_dashboard():
 def page_login_choose():
     left, right = st.columns([1, 1])
     with left:
-        _hero()
+        _hero("agent")
     with right:
         _logo("כניסה", "בחר את סוג המשתמש שלך")
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1252,7 +1285,7 @@ def page_login_choose():
 def page_agent_login():
     left, right = st.columns([1, 1])
     with left:
-        _hero()
+        _hero("agent")
     with right:
         _logo("כניסה כסוכן", "הזן את פרטי הגישה שלך")
 
@@ -1309,7 +1342,7 @@ def page_agent_login():
 def page_agent_verify_otp():
     left, right = st.columns([1, 1])
     with left:
-        _hero()
+        _hero("agent")
     with right:
         _logo("אימות סוכן", f"שלחנו קוד לוואטסאפ שלך ({st.session_state.reg_phone})")
 
@@ -1348,7 +1381,7 @@ def page_agent_verify_otp():
 def page_agent_reset_password():
     left, right = st.columns([1, 1])
     with left:
-        _hero()
+        _hero("agent")
     with right:
         _logo("איפוס סיסמה", "הזן את פרטיך לאימות")
 
@@ -1411,8 +1444,8 @@ def page_login():
                     st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("← חזרה להרשמה"):
-            st.session_state.step = "form"
+        if st.button("← חזרה"):
+            st.session_state.step = "form" if _agent else "choose"
             st.rerun()
 
 
@@ -1437,7 +1470,9 @@ def _admin_header(agent: dict):
 }
 </style>
 """, unsafe_allow_html=True)
-    st.markdown(f'<div class="admin-header">🔐 BituachBot — ממשק ניהול | {agent.get("full_name", "מנהל")}</div>',
+    lic = f' <span style="font-weight:400;font-size:0.85rem;opacity:0.8">· רישיון {agent["license_number"]}</span>' \
+        if agent.get("license_number") else ""
+    st.markdown(f'<div class="admin-header">🔐 BituachBot — ממשק ניהול | {agent.get("full_name", "מנהל")}{lic}</div>',
                 unsafe_allow_html=True)
     if agent.get("agent_code"):
         st.markdown('<div style="direction:rtl;font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:6px">'
@@ -1465,11 +1500,33 @@ def _agent_phone_form(agent: dict, key: str, button_label: str = "💾 שמור 
     return False
 
 
+def _agent_license_form(agent: dict, key: str, button_label: str = "💾 שמור מספר רישיון") -> bool:
+    lic = st.text_input("מספר רישיון סוכן ביטוח (רשות שוק ההון)", value=agent.get("license_number") or "",
+                        key=f"{key}_license", placeholder="מספר הרישיון")
+    if st.button(button_label, key=f"{key}_license_save", type="primary"):
+        clean = _clean_license(lic)
+        if not clean:
+            st.error("מספר רישיון לא תקין (ספרות בלבד).")
+        elif _db().update_agent_license(agent["id"], clean):
+            st.session_state.logged_in_agent["license_number"] = clean
+            st.success("✅ מספר הרישיון נשמר!")
+            return True
+        else:
+            st.error("שגיאה בשמירה")
+    return False
+
+
 def _agent_settings(agent: dict):
-    with st.expander("⚙️ הגדרות חשבון — טלפון, אימייל, סיסמה", expanded=False):
+    with st.expander("⚙️ הגדרות חשבון — טלפון, רישיון, אימייל, סיסמה", expanded=False):
         st.markdown("**📱 טלפון** — לקבלת התראות על לקוחות חדשים ולכניסה בקוד וואטסאפ")
         if _agent_phone_form(agent, "settings"):
             st.rerun()
+
+        if _db().has_license_column():
+            st.markdown("---")
+            st.markdown("**🪪 רישיון סוכן ביטוח** — מוצג ללקוחות שלך ובהודעות הבוט")
+            if _agent_license_form(agent, "settings"):
+                st.rerun()
 
         st.markdown("---")
         st.markdown("**✉️ אימייל**")
@@ -1531,6 +1588,18 @@ def page_agent_dashboard():
             _agent_logout()
         return
 
+    # License is required: BituachBot answers clients on behalf of a licensed agent.
+    if not _db().has_license_column():
+        st.caption("⚙️ למנהל המערכת: הרץ את supabase/agent_license.sql ב-Supabase כדי לשמור מספרי רישיון.")
+    elif not agent.get("license_number"):
+        st.warning("🪪 BituachBot מיועד לסוכני ביטוח מורשים. כדי להמשיך, הזן את מספר רישיון סוכן הביטוח שלך — "
+                   "הוא יוצג ללקוחות שלך, כי הבוט עונה להם בשמך.")
+        if _agent_license_form(agent, "gate", "💾 שמור והמשך"):
+            st.rerun()
+        if st.button("← יציאה", key="gate_logout_lic"):
+            _agent_logout()
+        return
+
     _agent_settings(agent)
     _render_admin_content(agent)
 
@@ -1558,7 +1627,7 @@ def page_agent_dashboard():
                 if digits.startswith("0"):
                     digits = "972" + digits[1:]
                 url = f"https://{instance[:4]}.api.greenapi.com/waInstance{instance}/sendMessage/{token}"
-                st.code(f"POST {url}\nchatId: {digits}@c.us")
+                st.code(f"POST {url.replace(token, '***')}\nchatId: {digits}@c.us")
                 try:
                     r = requests.post(
                         url,
@@ -1729,6 +1798,18 @@ def _render_client_card(client: dict, agent_id: str):
         st.caption("🔍 נתח שוב — מזהה מחדש את הנספחים במסמך. מסמך של נספח ייכנס למאגר.")
         _render_documents(client["id"], "agent_docs", reanalyze_by="agent")
 
+    log = _db().get_bot_messages(client["id"])
+    if log is not None:
+        with st.expander(f"🗂️ שיחות הלקוח עם הבוט בוואטסאפ ({len(log)})", expanded=False):
+            if not log:
+                st.caption("עדיין אין שיחות שמורות.")
+            for m in log:
+                who = "👤 הלקוח" if m.get("role") == "user" else "🤖 הבוט"
+                when = (m.get("created_at") or "")[:16].replace("T", " ")
+                st.markdown(f"**{who}** <span style='color:#9CA3AF;font-size:0.78rem'>{when}</span>",
+                            unsafe_allow_html=True)
+                st.text(m.get("content") or "")
+
     _render_client_chat(client)
 
 
@@ -1782,6 +1863,8 @@ def _render_client_chat(client: dict):
                 "ענה בעברית. הסתמך על הנספחים. אם המידע לא קיים, ציין זאת בבירור — לעולם אל תנחש מספרים או תנאים.",
                 "אל תיתן ייעוץ רפואי (אבחנות, בדיקות, טיפולים) — התייחס רק למה שהנספחים מכסים.",
                 TYPO_RULE,
+                "אתה כלי עזר לסוכן ביטוח מורשה: הצג עובדות מהנספחים בלבד. אם נשאלת אם כדאי ללקוח לקנות, לבטל או להחליף "
+                "ביטוח — פרט את מה שכתוב בנספחים הרלוונטיים, וציין שההחלטה המקצועית היא של הסוכן.",
                 "בסוף כל תשובה שעוסקת בכיסוי, סכומים, השתתפות עצמית, תנאים או זכאות, הוסף בשורה נפרדת בדיוק:",
                 AI_NOTE_AGENT,
             ]
@@ -1862,7 +1945,8 @@ def _render_new_client_form(agent: dict):
             for m in msgs:
                 _flash(*m)
         if send_welcome:
-            _db().send_welcome_from_agent(clean, name.strip(), agent.get("full_name", ""), BASE_URL)
+            _db().send_welcome_from_agent(clean, name.strip(), agent.get("full_name", ""), BASE_URL,
+                                          agent.get("license_number") or "")
         st.session_state.admin_client = _db().get_profile_by_id(user_id)
         st.rerun()
 
@@ -2025,10 +2109,11 @@ def page_privacy():
 </style>
 <div class="privacy-container">
 <h1>🛡️ מדיניות פרטיות — BituachBot</h1>
-<div class="privacy-date">עדכון אחרון: מאי 2026</div>
+<div class="privacy-date">עדכון אחרון: אוקטובר 2026</div>
 
 <h2>1. מי אנחנו</h2>
-<p>BituachBot היא פלטפורמה דיגיטלית המיועדת לסיוע ללקוחות ביטוח בישראל להבין את תכני הפוליסות שלהם. השירות מופעל על ידי סוכנות ביטוח מורשית.</p>
+<p>BituachBot הוא כלי עבודה דיגיטלי לסוכני ביטוח מורשים. השירות ניתן לך מטעם סוכן הביטוח שלך — בעל רישיון מרשות שוק ההון, ביטוח וחיסכון — שהוא האחראי על הקשר איתך. שם הסוכן ומספר הרישיון שלו מופיעים באזור האישי שלך.</p>
+<p>BituachBot מסביר את נוסח הפוליסה שלך. הוא <strong>אינו</strong> ממליץ על רכישה, ביטול או החלפה של ביטוח — את זה עושה הסוכן שלך — <strong>ואינו</strong> נותן ייעוץ רפואי.</p>
 
 <h2>2. אילו מידע אנו אוספים</h2>
 <ul>
@@ -2036,8 +2121,12 @@ def page_privacy():
   <li><strong>מספר טלפון נייד</strong> — לצורך אימות זהות ושליחת עדכונים</li>
   <li><strong>תעודת זהות</strong> — לצורך אימות זהות ומניעת כפילויות</li>
   <li><strong>מסמכי פוליסת ביטוח (PDF)</strong> — לצורך ניתוח הכיסויים ומתן מענה אישי</li>
-  <li><strong>שיחות עם הבוט</strong> — לצורך שיפור השירות ומתן מענה רציף</li>
+  <li><strong>שיחות עם הבוט</strong> — נשמרות כדי לתעד את התשובות שניתנו ולאפשר לסוכן שלך לעקוב ולעזור</li>
 </ul>
+<p><strong>מידע רפואי:</strong> הפוליסה ושאלותיך עשויות לכלול מידע רפואי, שהוא "מידע בעל רגישות מיוחדת" לפי חוק הגנת הפרטיות. אנו מעבדים אותו רק לצורך מתן השירות ובהסכמתך, ולא משתמשים בו לשום מטרה אחרת.</p>
+
+<h2>בינה מלאכותית</h2>
+<p>התשובות בוואטסאפ ובאזור האישי נוצרות אוטומטית ע״י בינה מלאכותית, על סמך הנספחים שבפוליסה שלך כפי שהיא במערכת. הן עלולות לכלול טעויות ואינן מהוות אישור כיסוי. לפני כל פעולה — ובכל עת שתרצה לדבר עם אדם — פנה ישירות לסוכן שלך.</p>
 
 <h2>3. כיצד אנו משתמשים במידע</h2>
 <ul>
@@ -2053,15 +2142,17 @@ def page_privacy():
   <li><strong>Supabase Inc. (ארה"ב)</strong> — אחסון המידע בצורה מאובטחת</li>
   <li><strong>Anthropic PBC (ארה"ב)</strong> — עיבוד טקסט הפוליסה באמצעות בינה מלאכותית לצורך מענה על שאלותיך. <em>הערה: טקסט הפוליסה שלך נשלח לשרתי Anthropic לעיבוד.</em></li>
   <li><strong>Green API</strong> — שליחת הודעות WhatsApp לאימות ועדכונים</li>
-  <li><strong>הסוכן שלך</strong> — רואה את פרטיך ואת הנספחים שלך לצורך סיוע</li>
+  <li><strong>n8n</strong> — הפעלת הבוט בוואטסאפ</li>
+  <li><strong>הסוכן שלך</strong> — רואה את פרטיך, את הנספחים, את המסמכים ואת השיחות שלך עם הבוט לצורך מתן השירות</li>
 </ul>
+<p>חלק מספקי השירות מאחסנים ומעבדים את המידע בשרתים מחוץ לישראל. ההעברה נעשית רק לצורך מתן השירות ובכפוף להסכמתך.</p>
 <p>אנו לא מוכרים, לא משכירים ולא מעבירים את המידע שלך לצדדים שלישיים למטרות שיווק.</p>
 
 <h2>5. אבטחת מידע</h2>
 <p>המידע שלך מאוחסן בצורה מוצפנת בשרתי Supabase. הגישה מוגבלת לצוות המורשה בלבד. אנו מיישמים אמצעי אבטחה סבירים בהתאם לתקנות הגנת הפרטיות (אבטחת מידע), תשע"ז-2017.</p>
 
 <h2>6. שמירת מידע</h2>
-<p>המידע שלך נשמר כל עוד חשבונך פעיל. אתה רשאי לבקש מחיקת חשבונך וכל המידע הקשור אליו בכל עת.</p>
+<p>המידע שלך נשמר כל עוד חשבונך פעיל. אפשר למחוק את החשבון וכל המידע הקשור אליו (פרטים, נספחים, מסמכים ושיחות) בכל עת — ישירות באזור האישי, או דרך הסוכן שלך.</p>
 
 <h2>7. הזכויות שלך</h2>
 <p>בהתאם לחוק הגנת הפרטיות, תשמ"א-1981, יש לך זכות ל:</p>
@@ -2088,6 +2179,17 @@ def page_privacy():
 
 
 # ── ADMIN PAGE ─────────────────────────────────────────────────────────────────
+
+def _render_agents_registry():
+    """Main admin only: every agent with license number, to verify against the CMA registry."""
+    agents = _db().get_all_agents()
+    with st.expander(f"🪪 סוכנים רשומים ({len(agents)}) — בדיקת רישיונות", expanded=False):
+        st.caption("BituachBot מיועד לסוכנים מורשים בלבד. בדוק כל מספר רישיון במאגר בעלי הרישיון של רשות שוק ההון.")
+        for a in agents:
+            lic = a.get("license_number") or "❗ חסר"
+            st.markdown(f"**{a.get('full_name','')}** · רישיון: `{lic}` · {a.get('phone_number') or ''} · "
+                        f"{a.get('email') or ''} · קוד `{a.get('agent_code','')}`")
+
 
 def page_admin():
     """Legacy URL-based admin (?agent=CODE&admin=1). Kept for backward compat."""
@@ -2121,6 +2223,8 @@ def page_admin():
 
     _admin_agent = agent_for_admin or {"full_name": "מנהל ראשי", "id": "", "agent_code": ""}
     _admin_header(_admin_agent)
+    if not agent_for_admin:
+        _render_agents_registry()
     _render_admin_content(_admin_agent)
 
     st.markdown("---")
@@ -2183,8 +2287,8 @@ else:
         page_agent_success()
     elif step == "form":
         page_form()
-    elif _agent:
-        # Direct ?agent=CODE link — skip choose screen
+    elif _agent_code:
+        # Direct ?agent=CODE link — skip choose screen (page_form explains an invalid code)
         page_form()
     else:
         page_choose()

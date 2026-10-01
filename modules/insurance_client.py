@@ -77,11 +77,41 @@ class InsuranceClientDB:
 
     # ── AGENTS ────────────────────────────────────────────────────────────────
 
+    # agents.license_number is added by supabase/agent_license.sql — tolerate DBs where it wasn't run yet
+    _license_col = None
+    _license_checked_at = 0.0
+
+    def has_license_column(self) -> bool:
+        import time as _t
+        if InsuranceClientDB._license_col is True:
+            return True
+        if _t.time() - InsuranceClientDB._license_checked_at > 60:
+            InsuranceClientDB._license_checked_at = _t.time()
+            try:
+                self.client.table("agents").select("license_number").limit(1).execute()
+                InsuranceClientDB._license_col = True
+            except Exception:
+                InsuranceClientDB._license_col = False
+        return bool(InsuranceClientDB._license_col)
+
+    def _agent_cols(self, base: str) -> str:
+        return base + (", license_number" if self.has_license_column() else "")
+
+    def update_agent_license(self, agent_id: str, license_number: str) -> bool:
+        if not self.has_license_column():
+            return False
+        try:
+            self.client.table("agents").update({"license_number": license_number}).eq("id", agent_id).execute()
+            return True
+        except Exception as e:
+            print(f"[InsuranceClientDB] update_agent_license: {e}")
+            return False
+
     def get_agent_by_code(self, code: str) -> dict | None:
         try:
             res = (
                 self.client.table("agents")
-                .select("id, agent_code, full_name, admin_password, email, phone_number")
+                .select(self._agent_cols("id, agent_code, full_name, admin_password, email, phone_number"))
                 .eq("agent_code", code.upper())
                 .limit(1)
                 .execute()
@@ -97,7 +127,7 @@ class InsuranceClientDB:
         try:
             res = (
                 self.client.table("agents")
-                .select("id, agent_code, full_name, email, phone_number")
+                .select(self._agent_cols("id, agent_code, full_name, email, phone_number"))
                 .eq("id", agent_id)
                 .limit(1)
                 .execute()
@@ -113,7 +143,7 @@ class InsuranceClientDB:
             # Fetch candidates case-insensitively using filter
             res = (
                 self.client.table("agents")
-                .select("id, agent_code, full_name, admin_password, email, phone_number")
+                .select(self._agent_cols("id, agent_code, full_name, admin_password, email, phone_number"))
                 .filter("email", "ilike", clean_email)
                 .limit(1)
                 .execute()
@@ -136,7 +166,7 @@ class InsuranceClientDB:
         try:
             res = (
                 self.client.table("agents")
-                .select("id, agent_code, full_name, admin_password, email, phone_number")
+                .select(self._agent_cols("id, agent_code, full_name, admin_password, email, phone_number"))
                 .eq("phone_number", phone)
                 .limit(1)
                 .execute()
@@ -189,6 +219,10 @@ class InsuranceClientDB:
         """Delete a user's policies and profile (right to erasure)."""
         try:
             self.delete_client_documents(user_id)
+            try:
+                self.client.table("bot_messages").delete().eq("user_id", user_id).execute()
+            except Exception:
+                pass  # table not created yet
             self.client.table("user_policies").delete().eq("user_id", user_id).execute()
             self.client.table("profiles").delete().eq("id", user_id).execute()
             return True
@@ -198,7 +232,7 @@ class InsuranceClientDB:
 
     def get_all_agents(self) -> list[dict]:
         try:
-            res = self.client.table("agents").select("id, agent_code, full_name").execute()
+            res = self.client.table("agents").select(self._agent_cols("id, agent_code, full_name, email, phone_number")).execute()
             return res.data or []
         except Exception as e:
             print(f"[InsuranceClientDB] get_all_agents: {e}")
@@ -227,7 +261,8 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] reset_agent_password: {e}")
             return False
 
-    def create_agent(self, agent_code: str, full_name: str, admin_password: str, email: str = "", phone: str = "") -> tuple[bool, str]:
+    def create_agent(self, agent_code: str, full_name: str, admin_password: str, email: str = "", phone: str = "",
+                     license_number: str = "") -> tuple[bool, str]:
         try:
             existing = self.get_agent_by_code(agent_code)
             if existing:
@@ -238,6 +273,7 @@ class InsuranceClientDB:
                 "admin_password": hash_password(admin_password),
                 "email": email,
                 **({"phone_number": phone} if phone else {}),
+                **({"license_number": license_number} if license_number and self.has_license_column() else {}),
             }).execute()
             return (True, res.data[0]["id"]) if res.data else (False, "שגיאה ביצירת הסוכן")
         except Exception as e:
@@ -468,6 +504,16 @@ class InsuranceClientDB:
             "company": (r.get("insurance_companies") or {}).get("name", "") if isinstance(r.get("insurance_companies"), dict) else "",
         } for r in rows]
         return sorted(out, key=lambda r: (r["annex_code"], str(r["version_year"])))
+
+    def get_bot_messages(self, user_id: str, limit: int = 60) -> list[dict] | None:
+        """Client ↔ WhatsApp-bot conversation log (oldest first). None if the table doesn't exist yet."""
+        try:
+            res = (self.client.table("bot_messages").select("created_at, role, content")
+                   .eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute())
+            return list(reversed(res.data or []))
+        except Exception as e:
+            print(f"[InsuranceClientDB] get_bot_messages: {e}")
+            return None
 
     def has_annex(self, annex_code: str) -> bool:
         try:
@@ -992,12 +1038,14 @@ class InsuranceClientDB:
             print(f"[InsuranceClientDB] _client_snapshot: {e}")
             return None
 
-    def send_welcome_from_agent(self, phone: str, name: str, agent_name: str, login_url: str = "") -> bool:
+    def send_welcome_from_agent(self, phone: str, name: str, agent_name: str, login_url: str = "",
+                                license_number: str = "") -> bool:
         """Sent from the bot number when an agent creates a client — the client saves this number."""
+        lic = f" (סוכן ביטוח מורשה, רישיון מס' {license_number})" if license_number else ""
         lines = [
             f"שלום {name}! 👋",
             "",
-            f"הסוכן שלך, {agent_name}, רשם אותך ל-BituachBot 🛡️ — עוזר הביטוח החכם שלך בוואטסאפ.",
+            f"הסוכן שלך, {agent_name}{lic}, רשם אותך ל-BituachBot 🛡️ — העוזר הדיגיטלי שלו בוואטסאפ.",
             "",
             "שמור את המספר הזה ושלח כאן כל שאלה על הביטוח שלך, למשל:",
             '• "יש לי כיסוי לפיזיותרפיה?"',
