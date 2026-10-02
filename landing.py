@@ -10,7 +10,6 @@ import re
 import time
 from datetime import datetime, timedelta
 
-import requests
 import streamlit as st
 import streamlit.components.v1 as components
 from anthropic import Anthropic
@@ -18,6 +17,7 @@ from dotenv import load_dotenv
 
 from modules.insurance_client import InsuranceClientDB, is_hashed, verify_password
 from modules.hebrew_text import fix_visual_hebrew
+from modules import ui
 
 try:
     import pdfplumber
@@ -27,137 +27,10 @@ except ImportError:
 
 load_dotenv()
 
-st.set_page_config(page_title="BituachBot", page_icon="🛡️", layout="wide",
+st.set_page_config(page_title="BituachBot", page_icon=":material/shield:", layout="wide",
                    initial_sidebar_state="collapsed")
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap');
-*, html, body, [class*="css"] { font-family: 'Heebo', sans-serif !important; box-sizing: border-box; }
-#MainMenu, header, footer, [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
-.stApp > header { display: none !important; }
-.main .block-container { padding: 0 !important; max-width: 100% !important; }
-[data-testid="stHorizontalBlock"] { gap: 0 !important; align-items: stretch !important; min-height: 100vh; }
-[data-testid="stHorizontalBlock"] > div:first-child {
-  background: #F0FDF4 !important; min-height: 100vh !important;
-  padding: 64px 56px !important; direction: rtl; position: relative; overflow: hidden;
-}
-[data-testid="stHorizontalBlock"] > div:last-child {
-  background: white !important; min-height: 100vh !important;
-  padding: 48px 56px !important; direction: rtl;
-}
-/* Global RTL for text elements only — not structural divs */
-[data-testid="stHorizontalBlock"] > div:last-child p,
-[data-testid="stHorizontalBlock"] > div:last-child h1,
-[data-testid="stHorizontalBlock"] > div:last-child h2,
-[data-testid="stHorizontalBlock"] > div:last-child h3,
-[data-testid="stHorizontalBlock"] > div:last-child label {
-  text-align: right !important; direction: rtl !important;
-}
-/* Hide broken Material icon text in expanders, replace with CSS arrow */
-[data-testid="stIconMaterial"] { display: none !important; }
-[data-testid="stExpander"] details summary {
-  direction: rtl !important; display: flex !important;
-  align-items: center !important; gap: 8px !important;
-  cursor: pointer !important;
-}
-[data-testid="stExpander"] details summary::after {
-  content: "▶"; color: #9CA3AF; font-size: 11px; flex-shrink: 0;
-  transition: transform 0.2s ease;
-}
-[data-testid="stExpander"] details[open] summary::after { content: "▼"; }
-.badge {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: rgba(255,255,255,0.85); border: 1px solid rgba(22,179,100,0.15);
-  color: #16B364; font-weight: 600; font-size: 0.85rem;
-  padding: 6px 16px; border-radius: 999px; margin-bottom: 28px;
-}
-.hero-title { font-size: 3rem; font-weight: 900; color: #111827; line-height: 1.25; margin-bottom: 20px; }
-.hero-title span { color: #16B364; }
-.hero-sub { font-size: 1.1rem; color: #6B7280; margin-bottom: 36px; line-height: 1.65; max-width: 400px; }
-.benefit-item { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.benefit-check {
-  flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
-  background: rgba(22,179,100,0.12); display: flex; align-items: center;
-  justify-content: center; color: #16B364; font-size: 0.85rem; font-weight: 700;
-}
-.benefit-text { font-size: 1rem; font-weight: 500; color: #1F2937; }
-.privacy-note { margin-top: 44px; font-size: 0.82rem; color: #9CA3AF; }
-.circle-deco-1 {
-  position: absolute; width: 320px; height: 320px; border-radius: 50%;
-  background: rgba(22,179,100,0.05); top: -80px; left: -80px; pointer-events: none;
-}
-.circle-deco-2 {
-  position: absolute; width: 200px; height: 200px; border-radius: 50%;
-  background: rgba(22,179,100,0.05); bottom: 40px; right: 40px; pointer-events: none;
-}
-.form-logo { display: flex; align-items: center; gap: 8px; justify-content: center; margin-bottom: 8px; }
-.form-logo-text { font-size: 1.5rem; font-weight: 700; color: #16B364; }
-.form-title { font-size: 1.5rem; font-weight: 700; color: #111827; text-align: center !important; margin-bottom: 24px; }
-.form-sub { font-size: 0.9rem; color: #6B7280; text-align: center !important; margin-bottom: 28px; }
-.section-title {
-  font-size: 1rem; font-weight: 700; color: #111827;
-  text-align: right !important; direction: rtl !important;
-  margin-bottom: 12px; padding-bottom: 8px;
-  border-bottom: 2px solid #F0FDF4;
-}
-.policy-card {
-  background: #F0FDF4; border: 1px solid #D1FAE5; border-radius: 12px;
-  padding: 14px 18px; margin-bottom: 10px; direction: rtl; text-align: right;
-}
-.policy-card .annex-code { font-size: 0.8rem; color: #16B364; font-weight: 700; text-align: right; }
-.policy-card .annex-name { font-size: 1rem; font-weight: 600; color: #111827; text-align: right; }
-.policy-card .company-name { font-size: 0.85rem; color: #6B7280; text-align: right; }
-.profile-box {
-  background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px;
-  padding: 16px 20px; margin-bottom: 24px; direction: rtl; text-align: right;
-}
-.profile-box div { text-align: right !important; direction: rtl !important; }
-.otp-hint { text-align: center !important; color: #6B7280; font-size: 0.9rem; margin-bottom: 20px; }
-.stTextInput > div > div > input {
-  background: rgba(240,253,244,0.6) !important; border: 1.5px solid #E5E7EB !important;
-  border-radius: 12px !important; height: 48px !important; padding: 0 16px !important;
-  direction: rtl !important; text-align: right !important;
-  font-size: 0.95rem !important; color: #111827 !important;
-}
-.stTextInput > div > div > input:focus {
-  border-color: #16B364 !important; box-shadow: 0 0 0 3px rgba(22,179,100,0.15) !important;
-}
-label { font-size: 0.875rem !important; font-weight: 500 !important; color: #111827 !important;
-  direction: rtl !important; text-align: right !important; display: block !important; }
-[data-testid="stFileUploader"] {
-  background: rgba(240,253,244,0.4) !important; border: 2px dashed #D1D5DB !important; border-radius: 12px !important;
-}
-[data-testid="stFileUploader"] section { direction: ltr !important; }
-[data-testid="stFileUploader"] section > div { direction: rtl !important; text-align: right !important; }
-[data-testid="stFileUploader"] button { direction: ltr !important; }
-.stButton > button[kind="primary"] {
-  background: #16B364 !important; border: none !important; border-radius: 999px !important;
-  height: 52px !important; font-size: 1.05rem !important; font-weight: 700 !important;
-  color: white !important; width: 100% !important;
-  box-shadow: 0 4px 14px rgba(22,179,100,0.35) !important;
-}
-.stButton > button[kind="primary"]:hover { background: #12985A !important; }
-.stButton > button:not([kind="primary"]) {
-  background: transparent !important; border: none !important;
-  color: #16B364 !important; font-size: 0.9rem !important; text-decoration: underline !important;
-}
-.stAlert { direction: rtl !important; text-align: right !important; border-radius: 12px !important; }
-.stAlert > div { direction: rtl !important; text-align: right !important; }
-/* Global RTL for all text content (admin page + everywhere) */
-.main .block-container p,
-.main .block-container h1, .main .block-container h2,
-.main .block-container h3, .main .block-container h4,
-.main .block-container li, .main .block-container label,
-.main .block-container .stMarkdown, .main .block-container caption {
-  text-align: right !important; direction: rtl !important;
-}
-[data-testid="stMarkdownContainer"] { text-align: right !important; direction: rtl !important; }
-[data-testid="stCaptionContainer"] { text-align: right !important; direction: rtl !important; }
-[data-testid="stCheckbox"] label { text-align: right !important; direction: rtl !important; }
-[data-testid="stSelectbox"] label { text-align: right !important; direction: rtl !important; }
-</style>
-""", unsafe_allow_html=True)
+st.markdown(f"<style>{ui.BASE_CSS}</style>", unsafe_allow_html=True)
 
 # ── AGENT CONTEXT ─────────────────────────────────────────────────────────────
 _params = st.query_params
@@ -182,20 +55,6 @@ defaults = {
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
-
-AGENT_BENEFITS = [
-    "הלקוחות נרשמים דרך הקישור האישי שלך",
-    "הבוט עונה בשמך — לפי הנספחים של כל לקוח",
-    "רואים מה חסר לכל לקוח ומקבלים התראות",
-    "מאגר נספחים משותף — מעלים פעם אחת",
-]
-BENEFITS = [
-    "מבוסס על הפוליסה האישית שלך",
-    "תשובות מיידיות בעברית, ערבית ורוסית",
-    "כירופרקטיקה, MRI, פיזיותרפיה ועוד",
-    "ללא המתנה לנציג, 24/7",
-]
-
 
 # ── HELPERS ────────────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
@@ -322,40 +181,23 @@ def _restore_session():
 
 
 def _whatsapp_card(phone: str):
-    """Shows a 'save this number' card. phone in format 05XXXXXXXX"""
+    """'Save this number' card. phone in format 05XXXXXXXX"""
     if not phone:
         return
     digits = phone.replace("-", "").replace(" ", "")
     wa_digits = "972" + digits[1:] if digits.startswith("0") else digits
-    wa_link = f"https://wa.me/{wa_digits}"
-    st.markdown(f"""
-<div style="background:#F0FDF4;border:2px solid #D1FAE5;border-radius:14px;
-     padding:20px 24px;margin:20px 0;direction:rtl;text-align:right">
-  <div style="font-size:1.1rem;font-weight:700;color:#111827;margin-bottom:6px">
-    💬 שמור את הבוט באנשי הקשר שלך
-  </div>
-  <div style="font-size:0.9rem;color:#6B7280;margin-bottom:14px">
-    כדי לשלוח הודעות לבוט ולקבל תשובות, שמור את המספר הזה:
-  </div>
-  <div style="font-size:1.6rem;font-weight:800;color:#16B364;
-       letter-spacing:2px;margin-bottom:14px;text-align:center">
-    {phone}
-  </div>
-  <a href="{wa_link}" target="_blank" style="
-     display:block;background:#25D366;color:white;text-align:center;
-     padding:12px;border-radius:999px;font-weight:700;font-size:1rem;
-     text-decoration:none;">
-    📲 פתח WhatsApp ושמור מספר
-  </a>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="bb-card"><div class="bb-label">הבוט בוואטסאפ</div>'
+        f'<div class="bb-big">שומרים את המספר ושולחים שאלה: {ui.ltr(phone)}</div>'
+        f'<div class="bb-meta" style="margin:4px 0 12px">למשל: "יש לי כיסוי לפיזיותרפיה?" או "כמה ההשתתפות העצמית ב-MRI?"</div>'
+        f'<a class="bb-btn" href="https://wa.me/{wa_digits}" target="_blank" rel="noopener">{ui.ms("chat")}פתיחת שיחה בוואטסאפ</a>'
+        f'</div>', unsafe_allow_html=True)
 
 
-@st.cache_resource(show_spinner=False)
 def _claude() -> Anthropic:
     api_key = _get_secret("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
-        st.error("❌ ANTHROPIC_API_KEY לא מוגדר")
+        st.error("ANTHROPIC_API_KEY לא מוגדר.")
         st.stop()
     return Anthropic(api_key=api_key)
 
@@ -447,7 +289,7 @@ POLICY_CHANGE_NOTE = ("המידע כאן רלוונטי עבורך כל עוד �
                       "(הוספת, ביטלת או עדכנת כיסוי) — העלה את הפוליסה המעודכנת או עדכן את הסוכן שלך.")
 AI_NOTE_CLIENT = ("ℹ️ התשובה מתייחסת לנספחים שבפוליסה שלך כפי שהיא במערכת (אם לא בוצע בה שינוי מאז) ונוצרה ע״י "
                   "בינה מלאכותית, ולכן אינה מהווה אישור כיסוי. לפני כל פעולה — מומלץ לוודא מול הסוכן או חברת הביטוח.")
-AI_NOTE_AGENT = "ℹ️ נוצר ע״י בינה מלאכותית על סמך הנספחים של הלקוח — מומלץ לאמת מול נוסח הפוליסה לפני שמתחייבים ללקוח."
+AI_NOTE_AGENT = "הערה: נוצר ע״י בינה מלאכותית על סמך הנספחים של הלקוח — מומלץ לאמת מול נוסח הפוליסה לפני שמתחייבים ללקוח."
 
 ANALYZE_PROMPT = """אתה מנתח מסמכי ביטוח ישראליים. קבע מה סוג המסמך:
 • "policy" — מפרט / דף פרטי ביטוח של מבוטח מסוים: רשימת הכיסויים והנספחים שנרכשו (בדרך כלל עם שם מבוטח, מספר פוליסה, פרמיה).
@@ -546,7 +388,7 @@ def _otp_failed_notice(agent: bool = False):
     """Shown when the WhatsApp code could not be sent. Never shows the code itself."""
     if st.session_state.get("_otp_sent", True):
         return
-    st.error("❌ לא הצלחנו לשלוח את קוד האימות בוואטסאפ. נסה שוב בעוד רגע"
+    st.error("לא הצלחנו לשלוח את קוד האימות בוואטסאפ. נסה שוב בעוד רגע"
              + (", או היכנס עם אימייל וסיסמה." if agent else "."))
     st.caption(f"פרטים טכניים: {st.session_state.get('_otp_error', '')}")
 
@@ -572,30 +414,14 @@ def _all_agents() -> list[dict]:
 
 # ── HERO PANEL ─────────────────────────────────────────────────────────────────
 def _hero(audience: str = "client"):
-    """audience='agent' on the general/agent pages (BituachBot is a tool for licensed agents),
-    'client' on the pages a client reaches through their agent's link."""
-    items = AGENT_BENEFITS if audience == "agent" else BENEFITS
-    bullets = "".join(
-        f'<div class="benefit-item">'
-        f'<span class="benefit-check">✓</span>'
-        f'<span class="benefit-text">{b}</span>'
-        f'</div>'
-        for b in items
-    )
-    if audience == "agent":
-        head = """<div class="badge">🛡️ כלי עבודה לסוכני ביטוח מורשים</div>
-<h1 class="hero-title">עם <span>BituachBot</span><br>הלקוחות שלך מקבלים<br>תשובות על הפוליסה, 24/7</h1>
-<p class="hero-sub">עוזר דיגיטלי בוואטסאפ שעונה ללקוחות שלך בשמך — לפי הנספחים בפוליסה של כל לקוח — ואתה רואה הכל בפאנל.</p>"""
-    else:
-        head = """<div class="badge">💬 העוזר הדיגיטלי של סוכן הביטוח שלך</div>
-<h1 class="hero-title">עם <span>BituachBot</span><br>תבין סוף סוף מה<br>הביטוח שלך מכסה</h1>
-<p class="hero-sub">שלח הודעה בוואטסאפ וקבל הסבר על הפוליסה שלך — מטעם סוכן הביטוח שלך.</p>"""
-    st.markdown(f"""
-<div class="circle-deco-1"></div><div class="circle-deco-2"></div>
-{head}
-{bullets}
-<p class="privacy-note">🔒 המידע שלך מאובטח ומוגן לפי תקנות הפרטיות</p>
-""", unsafe_allow_html=True)
+    """Auth pages: the ink side panel (wide screens only) + the centred-form layout."""
+    st.markdown(f"<style>{ui.AUTH_CSS}</style>{ui.side_panel(audience)}", unsafe_allow_html=True)
+
+
+def _split():
+    """(panel, form) containers for the auth pages. Kept as two containers so page code reads
+    `with left: _hero()` / `with right: ...`; the panel is positioned by CSS, not by columns."""
+    return st.container(), st.container()
 
 
 def _clean_license(value: str) -> str:
@@ -610,30 +436,40 @@ def _license_text(agent: dict) -> str:
 
 
 def _agent_badge_html(agent: dict, title: str) -> str:
-    return (f'<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:12px 16px;'
-            f'margin-bottom:14px;direction:rtl;text-align:right">'
-            f'<div style="font-size:0.8rem;color:#15803D;font-weight:700">🧑‍💼 {title}</div>'
-            f'<div style="font-weight:700;color:#111827">{agent.get("full_name", "")}</div>'
-            f'<div style="font-size:0.85rem;color:#4B5563">{_license_text(agent)}</div></div>')
+    return (f'<div class="bb-card"><div class="bb-label">{title}</div>'
+            f'<div class="bb-big">{agent.get("full_name", "")}</div>'
+            f'<div class="bb-meta">{_license_text(agent)}</div></div>')
 
 
 def _logo(title: str, sub: str = ""):
-    st.markdown(
-        f'<div class="form-logo"><span style="font-size:2rem">🛡️</span>'
-        f'<span class="form-logo-text">BituachBot</span></div>'
-        f'<div class="form-title">{title}</div>'
-        + (f'<div class="form-sub">{sub}</div>' if sub else ""),
-        unsafe_allow_html=True,
-    )
+    st.markdown(ui.form_head(title, sub), unsafe_allow_html=True)
+
+
+def _topbar(who: str, menu_label: str):
+    """Ink bar with the brand and an account dropdown. Returns the popover to fill."""
+    st.markdown("<style>[data-testid='stMainBlockContainer']{max-width:920px !important}</style>", unsafe_allow_html=True)
+    with st.container(key="bb_topbar"):
+        c1, c2 = st.columns([5, 2], vertical_alignment="center")
+        with c1:
+            st.markdown(ui.brand(who), unsafe_allow_html=True)
+        with c2:
+            return st.popover(menu_label, icon=":material/account_circle:")
+
+
+def _client_logout():
+    for k, v in defaults.items():
+        st.session_state[k] = v
+    _forget_login()
+    st.rerun()
 
 
 # ── PAGES ──────────────────────────────────────────────────────────────────────
 
 STATUS_LABELS = {
-    "ready": ("✅", "מוכן — הבוט עונה"),
-    "partial": ("🟡", "חלק מהנספחים חסרים"),
-    "waiting_annex": ("⏳", "הנספחים חסרים במאגר"),
-    "empty": ("❌", "לא הועלתה פוליסה"),
+    "ready": ("ok", "מוכן"),
+    "partial": ("part", "חלקי"),
+    "waiting_annex": ("wait", "חסר נספח"),
+    "empty": ("none", "בלי פוליסה"),
 }
 
 
@@ -653,27 +489,28 @@ def _render_documents(user_id: str, key_prefix: str, reanalyze_by: str = ""):
     """List a client's uploaded PDFs with download links. reanalyze_by='agent' adds a re-analyze button."""
     docs = _db().list_client_documents(user_id)
     if not docs:
-        st.caption("לא הועלו מסמכים עדיין.")
+        st.caption("עדיין לא הועלו מסמכים.")
         return
     who_label = {"client": "הלקוח", "agent": "הסוכן", "bot": "וואטסאפ"}
     for i, d in enumerate(docs):
         url = _db().document_url(d["path"])
         who = who_label.get(d.get("uploaded_by", ""), "")
         meta = " · ".join(x for x in [d.get("uploaded_at", ""), who] if x)
-        line = (f"📄 [{d['name']}]({url})" if url else f"📄 {d['name']}") + \
-               f" <span style='color:#9CA3AF;font-size:0.8rem'>{meta}</span>"
+        name = (f'<a class="bb-link" href="{url}" target="_blank" rel="noopener">{d["name"]}</a>' if url
+                else f'<b>{d["name"]}</b>')
+        line = f'{ui.ms("description")} {name} <span class="bb-meta" style="color:#8B94A7;font-size:.82rem">{meta}</span>'
         if not reanalyze_by:
             st.markdown(line, unsafe_allow_html=True)
             continue
-        c1, c2 = st.columns([4, 1])
+        c1, c2 = st.columns([4, 1], vertical_alignment="center")
         with c1:
             st.markdown(line, unsafe_allow_html=True)
         with c2:
-            if st.button("🔍 נתח שוב", key=f"{key_prefix}_re_{i}", use_container_width=True,
+            if st.button("ניתוח מחדש", key=f"{key_prefix}_re_{i}", use_container_width=True,
                          help="מזהה שוב את הנספחים. אם זה מסמך של נספח — הוא נכנס למאגר."):
                 data = _db().download_client_document(d["path"])
                 if not data:
-                    _flash("error", "❌ לא הצלחנו להוריד את הקובץ מהאחסון.")
+                    _flash("error", "לא הצלחנו להוריד את הקובץ מהאחסון.")
                 else:
                     info = _process_pdf(data)
                     res = _apply_document(user_id, info, reanalyze_by)
@@ -715,16 +552,16 @@ def _apply_document(user_id: str, info: dict, by: str) -> dict:
 def _document_messages(res: dict, info: dict) -> list[tuple[str, str]]:
     msgs = []
     if info.get("error"):
-        msgs.append(("error", f"❌ לא הצלחנו לנתח את המסמך: {info['error']}"))
+        msgs.append(("error", f"לא הצלחנו לנתח את המסמך: {info['error']}"))
     if res["is_annex"]:
         name = f" ({info['name']})" if info.get("name") else ""
         if res["library"]:
-            msgs.append(("success", f"📚 זה מסמך של נספח{name} — נשמר במאגר תחת: {' · '.join(res['library'])}. "
+            msgs.append(("success", f"זה מסמך של נספח{name} — נשמר במאגר תחת: {' · '.join(res['library'])}. "
                                     "כל הלקוחות עם הקודים האלה עודכנו."))
         if res["library_skipped"]:
-            msgs.append(("info", f"ℹ️ נספח {' · '.join(res['library_skipped'])} כבר קיים במאגר — הנוסח שם לא שונה."))
+            msgs.append(("info", f"נספח {' · '.join(res['library_skipped'])} כבר קיים במאגר — הנוסח שם לא שונה."))
     elif res["codes"]:
-        msgs.append(("success", f"✅ זוהו {len(res['codes'])} נספחים ({res['linked']} חדשים): {' · '.join(res['codes'])}"))
+        msgs.append(("success", f"זוהו {len(res['codes'])} נספחים ({res['linked']} חדשים): {' · '.join(res['codes'])}"))
     elif not info.get("error"):
         msgs.append(("warning", "לא זוהו קודי נספחים במסמך."))
     return msgs
@@ -745,7 +582,7 @@ def _ingest_files(user_id: str, files: list, by: str) -> tuple[list[tuple[str, s
         info = _process_pdf(data)
         totals["saved_all"] &= _db().upload_client_document(user_id, f.name, data, by)
         res = _apply_document(user_id, info, by)
-        prefix = f"📄 {f.name} — " if many else ""
+        prefix = f"{f.name} — " if many else ""
         for kind, m in _document_messages(res, info):
             msgs.append((kind, prefix + m))
         totals["codes"] += [c for c in res["codes"] if c not in totals["codes"]]
@@ -759,36 +596,29 @@ def _ingest_files(user_id: str, files: list, by: str) -> tuple[list[tuple[str, s
 
 def page_choose():
     """Landing. BituachBot is a tool for licensed agents: clients join only through their agent's link."""
-    left, right = st.columns([1, 1])
+    left, right = _split()
     with left:
         _hero("agent")
     with right:
-        _logo("ברוכים הבאים!", "BituachBot — כלי עבודה לסוכני ביטוח מורשים")
-        st.markdown("<br>", unsafe_allow_html=True)
+        _logo("ברוכים הבאים", "BituachBot הוא כלי עבודה לסוכני ביטוח מורשים.")
 
-        st.markdown("""
-<div style="background:#F8FAFF;border:2px solid #DBEAFE;border-radius:16px;padding:24px;text-align:right;direction:rtl">
-  <div style="font-size:2rem;margin-bottom:8px">🏢</div>
-  <div style="font-weight:700;font-size:1.1rem;color:#111827;margin-bottom:6px">אני סוכן ביטוח מורשה</div>
-  <div style="font-size:0.9rem;color:#6B7280">רוצה לתת ללקוחות שלי עוזר דיגיטלי שעונה בשמי</div>
-</div>
-""", unsafe_allow_html=True)
-        if st.button("הצטרפות כסוכן", type="primary", use_container_width=True):
+        st.markdown(ui.choice("סוכן ביטוח מורשה", "פתיחת חשבון: קישור אישי ללקוחות, פאנל ניהול ובוט שעונה בשמך."),
+                    unsafe_allow_html=True)
+        if st.button("הצטרפות כסוכן", type="primary", use_container_width=True, icon=":material/badge:"):
             st.session_state.step = "agent_register"
             st.rerun()
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("כבר רשום? כניסה (סוכן או לקוח)", use_container_width=True):
+        st.markdown(ui.choice("כבר רשומים?", "כניסה לסוכנים ולקוחות קיימים."), unsafe_allow_html=True)
+        if st.button("כניסה", use_container_width=True, icon=":material/login:"):
             st.session_state.step = "login_choose"
             st.rerun()
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.info("👤 לקוחות נרשמים דרך הקישור האישי שמקבלים מסוכן הביטוח שלהם.")
+        st.caption("לקוחות נרשמים דרך הקישור האישי שמקבלים מסוכן הביטוח שלהם.")
 
 
 def page_agent_register():
     """Agent self-registration."""
-    left, right = st.columns([1, 1])
+    left, right = _split()
     with left:
         _hero("agent")
     with right:
@@ -802,7 +632,6 @@ def page_agent_register():
         password = st.text_input("סיסמת ניהול", type="password", placeholder="בחר סיסמה חזקה")
         password2 = st.text_input("אימות סיסמה", type="password", placeholder="חזור על הסיסמה")
 
-        st.markdown("<br>", unsafe_allow_html=True)
         if st.button("צור חשבון סוכן", type="primary", use_container_width=True):
             errors = []
             if not full_name.strip():
@@ -839,8 +668,7 @@ def page_agent_register():
                 else:
                     st.error("לא ניתן ליצור קוד ייחודי. נסה שוב.")
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("← חזרה"):
+        if st.button("חזרה", type="tertiary", icon=":material/arrow_forward:"):
             st.session_state.step = "choose"
             st.rerun()
 
@@ -848,33 +676,14 @@ def page_agent_register():
 def page_agent_success():
     """Shown after successful agent registration."""
     code = st.session_state.agent_registered_code
-    base_url = "https://bituachbot.streamlit.app"
-    left, right = st.columns([1, 1])
+    left, right = _split()
     with left:
         _hero("agent")
     with right:
-        _logo("החשבון שלך מוכן! 🎉")
-        st.markdown(f"""
-<div style="direction:rtl;text-align:right">
-  <p style="color:#374151;font-size:1rem;line-height:1.8">
-    שלום! הסביבה שלך ב-BituachBot מוכנה.<br>
-    שלח את הקישורים האלה ללקוחות שלך:
-  </p>
-
-  <div style="background:#F0FDF4;border:1px solid #D1FAE5;border-radius:12px;padding:16px;margin:16px 0">
-    <div style="font-size:0.8rem;color:#16B364;font-weight:700;margin-bottom:6px">🔗 קישור לרישום לקוחות</div>
-    <code style="font-size:0.9rem;color:#111827;word-break:break-all">{base_url}/?agent={code}</code>
-  </div>
-
-  <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;padding:16px;margin:16px 0">
-    <div style="font-size:0.8rem;color:#EA580C;font-weight:700;margin-bottom:6px">🔐 פאנל הניהול שלך</div>
-    <code style="font-size:0.9rem;color:#111827;word-break:break-all">{base_url}/?agent={code}&admin=1</code>
-  </div>
-</div>
-""", unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("כניסה לפאנל הניהול", type="primary", use_container_width=True):
+        _logo("החשבון שלך מוכן", "זה הקישור האישי שלך. שולחים אותו ללקוחות, והם נרשמים אצלך.")
+        st.code(f"{BASE_URL}/?agent={code}", language=None)
+        st.caption("הקישור מופיע תמיד גם בפאנל, בלשונית הלקוחות.")
+        if st.button("כניסה לפאנל", type="primary", use_container_width=True, icon=":material/login:"):
             agent = _db().get_agent_by_code(code)
             if agent:
                 st.session_state.logged_in_agent = agent
@@ -882,11 +691,11 @@ def page_agent_success():
                 st.session_state.step = "agent_dashboard"
                 st.rerun()
             else:
-                st.error("שגיאה בטעינת נתוני הסוכן")
+                st.error("לא הצלחנו לטעון את החשבון. נסו להיכנס מדף הכניסה.")
 
 
 def page_form():
-    left, right = st.columns([1, 1])
+    left, right = _split()
     with left:
         _hero()
     with right:
@@ -896,11 +705,11 @@ def page_form():
             if _agent_code:
                 st.error("הקישור אינו תקין או שאינו פעיל — בקש מסוכן הביטוח שלך קישור חדש.")
             else:
-                st.info("👤 ההרשמה ל-BituachBot נעשית דרך סוכן הביטוח שלך — בקש ממנו את הקישור האישי.")
+                st.info("ההרשמה ל-BituachBot נעשית דרך סוכן הביטוח שלך. בקשו ממנו את הקישור האישי.")
             if st.button("כבר רשום? כניסה", type="primary", use_container_width=True):
                 st.session_state.step = "login"
                 st.rerun()
-            if st.button("← חזרה"):
+            if st.button("חזרה", type="tertiary", icon=":material/arrow_forward:"):
                 st.session_state.step = "choose"
                 st.rerun()
             return
@@ -925,13 +734,12 @@ def page_form():
                 annex_codes += [c for c in info["codes"] if c not in annex_codes]
                 label = f"{up.name}: " if len(uploads) > 1 else ""
                 if info.get("error"):
-                    st.error(f"❌ {label}{info['error']}")
+                    st.error(f"{label}{info['error']}")
                 elif info["doc_type"] == "annex" and info["codes"]:
                     st.success(f"{label}זוהה מסמך של נספח: {' · '.join(info['codes'])}")
                 elif info["codes"]:
                     st.success(f"{label}זוהו {len(info['codes'])} נספחים: {' · '.join(info['codes'])}")
 
-        st.markdown("<br>", unsafe_allow_html=True)
 
         privacy_ok = st.checkbox(
             "קראתי ואני מסכים/ה ל[מדיניות הפרטיות](/?privacy=1) ולתנאי השימוש, כולל עיבוד מסמכי הביטוח "
@@ -981,23 +789,13 @@ def page_form():
                 else:
                     st.error(result)
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("כבר נרשמת? כניסה"):
+        if st.button("כבר נרשמת? כניסה", type="tertiary"):
             st.session_state.step = "login"
             st.rerun()
 
-        terms_url   = _get_secret("TERMS_URL")   or os.getenv("TERMS_URL",   "#")
-        privacy_url = _get_secret("PRIVACY_URL") or os.getenv("PRIVACY_URL", "#")
-        st.markdown(
-            f'<p style="text-align:center;font-size:0.78rem;color:#9CA3AF;margin-top:16px">'
-            f'בהרשמה אני מסכימ/ה ל<a href="{terms_url}" target="_blank" style="color:#16B364">תנאי השימוש</a>'
-            f' ול<a href="{privacy_url}" target="_blank" style="color:#16B364">מדיניות הפרטיות</a></p>',
-            unsafe_allow_html=True,
-        )
-
 
 def page_verify(is_new: bool):
-    left, right = st.columns([1, 1])
+    left, right = _split()
     with left:
         _hero()
     with right:
@@ -1009,7 +807,6 @@ def page_verify(is_new: bool):
         _otp_failed_notice()
 
         code = st.text_input("קוד אימות", placeholder="123456", max_chars=6)
-        st.markdown("<br>", unsafe_allow_html=True)
 
         if st.button("אמת וכנס", type="primary", use_container_width=True):
             if _otp_valid(code):
@@ -1025,265 +822,218 @@ def page_verify(is_new: bool):
             else:
                 st.error("קוד שגוי או שפג תוקפו. נסה שנית.")
 
-        st.markdown("<br>", unsafe_allow_html=True)
         col1, col2 = st.columns(2)
         with col1:
             if st.button("שלח קוד מחדש"):
                 _send_otp(st.session_state.reg_phone)
                 if st.session_state._otp_sent:
-                    _flash("success", "✅ קוד חדש נשלח לוואטסאפ.")
+                    _flash("success", "קוד חדש נשלח לוואטסאפ.")
                 st.rerun()
         with col2:
-            if st.button("← חזרה"):
+            if st.button("חזרה", type="tertiary", icon=":material/arrow_forward:"):
                 st.session_state.step = "form" if is_new else "login"
                 st.rerun()
 
 
 def page_pending():
-    left, right = st.columns([1, 1])
+    left, right = _split()
     with left:
         _hero()
     with right:
-        _logo("נרשמת בהצלחה! 🎉")
-        st.markdown(f"""
-<div style="text-align:center;padding:20px 0;direction:rtl">
-  <div style="font-size:3rem;margin-bottom:16px">📞</div>
-  <div style="font-size:1.1rem;color:#374151;margin-bottom:12px">
-    שלום <strong>{st.session_state.reg_name}</strong>!
-  </div>
-  <div style="color:#6B7280;line-height:1.7">
-    קיבלנו את פרטיך.<br>
-    בקרוב אחד מהנציגים שלנו ייצור איתך קשר<br>
-    כדי לעזור לך להעלות את קובץ הפוליסה 🙏
-  </div>
-</div>
-""", unsafe_allow_html=True)
+        _logo("נרשמת בהצלחה", f"שלום {st.session_state.reg_name}, קיבלנו את הפרטים שלך. "
+                               "הסוכן שלך ייצור איתך קשר כדי להשלים את קובץ הפוליסה.")
         bot_num = _bot_whatsapp_number()
         if bot_num:
             _whatsapp_card(bot_num)
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("← חזרה לדף הראשי"):
+        if st.button("חזרה לדף הראשי", type="tertiary", icon=":material/arrow_forward:"):
             for k, v in defaults.items():
                 st.session_state[k] = v
             st.rerun()
 
 
 def page_dashboard():
-    left, right = st.columns([1, 1])
-    with left:
-        _hero()
-    with right:
-        _logo(f"שלום, {st.session_state.reg_name}! 👋")
+    """Client area: my agent, my annexes, upload, documents."""
+    uid = st.session_state.reg_user_id
+    profile = _db().get_profile_by_id(uid) or _db().get_profile_by_phone(st.session_state.reg_phone)
+    if profile:
+        st.session_state.reg_user_id = uid = profile["id"]
+    first_name = (st.session_state.reg_name or "").split(" ")[0]
 
-        profile = (_db().get_profile_by_id(st.session_state.reg_user_id)
-                   or _db().get_profile_by_phone(st.session_state.reg_phone))
+    menu = _topbar("האזור האישי", first_name or "החשבון שלי")
+    with menu:
         if profile:
-            st.session_state.reg_user_id = profile["id"]
-            st.markdown(f"""
-<div class="profile-box">
-  <div style="font-weight:600;font-size:1rem;margin-bottom:8px">פרטי חשבון</div>
-  <div style="color:#374151;font-size:0.9rem;line-height:1.8">
-    📱 {profile.get('phone_number','')}<br>
-    👤 {profile.get('full_name','')}<br>
-    🆔 {profile.get('teudat_zehut','—')}
-  </div>
-</div>
-""", unsafe_allow_html=True)
-            with st.expander("✏️ עדכון פרטים אישיים", expanded=False):
-                upd_name = st.text_input("שם מלא", value=profile.get("full_name", ""), key="upd_name")
-                upd_tz = st.text_input("תעודת זהות", value=profile.get("teudat_zehut", ""), key="upd_tz")
-                if st.button("💾 שמור פרטים", key="save_profile"):
-                    if not upd_name.strip():
-                        st.error("שם מלא הוא שדה חובה")
-                    elif _db().update_profile(profile["id"], upd_name, upd_tz):
-                        st.success("✅ הפרטים עודכנו בהצלחה!")
+            st.markdown(
+                f'<div class="bb-kv" style="flex-direction:column;gap:4px;margin-bottom:10px">'
+                f'<span><b>{profile.get("full_name", "")}</b></span>'
+                f'<span>טלפון {ui.ltr(profile.get("phone_number", ""))}</span>'
+                f'<span>ת"ז {ui.ltr(profile.get("teudat_zehut") or "—")}</span></div>', unsafe_allow_html=True)
+        if st.button("יציאה", key="client_logout", icon=":material/logout:", use_container_width=True):
+            _client_logout()
+
+    st.markdown(ui.h1(f"שלום, {first_name}" if first_name else "שלום"), unsafe_allow_html=True)
+
+    # ── MY AGENT ───────────────────────────────────────────────────────────────
+    my_agent = _db().get_agent_by_id((profile or {}).get("agent_id") or "")
+    if my_agent:
+        agent_phone = my_agent.get("phone_number") or ""
+        wa = ""
+        if agent_phone:
+            intl = "972" + agent_phone[1:] if agent_phone.startswith("0") else agent_phone
+            wa = (f' <a class="bb-link" href="https://wa.me/{intl}" target="_blank" rel="noopener">'
+                  f'{ui.ms("chat")} {ui.ltr(agent_phone)}</a>')
+        st.markdown(
+            f'<div class="bb-card"><div class="bb-label">הסוכן שלך</div>'
+            f'<div class="bb-big">{my_agent.get("full_name", "")}{wa}</div>'
+            f'<div class="bb-meta">{_license_text(my_agent)} · BituachBot הוא העוזר הדיגיטלי שלו</div></div>',
+            unsafe_allow_html=True)
+    elif profile:
+        with st.expander("הסוכן שלך — לא נבחר", expanded=True):
+            agents = _all_agents()
+            if agents:
+                names = [a["full_name"] for a in agents]
+                pick = st.selectbox("בחר את סוכן הביטוח שלך", ["—"] + names, key="client_pick_agent")
+                if pick != "—" and st.button("שמור סוכן", key="client_save_agent", type="primary"):
+                    chosen = agents[names.index(pick)]
+                    if _db().assign_agent(profile["id"], chosen["id"]):
+                        _db().notify_agent_new_client(chosen["id"], profile["id"])
+                        _flash("success", f"{pick} הוא הסוכן שלך.")
                         st.rerun()
-                    else:
-                        st.error("שגיאה בעדכון הפרטים")
-
-                st.markdown("---")
-                st.markdown("**📱 החלפת מספר טלפון**")
-                pending_phone = st.session_state.get("_new_phone", "")
-                if not pending_phone:
-                    new_phone = st.text_input("מספר חדש", placeholder="050-1234567", key="client_new_phone")
-                    if st.button("שלח קוד אימות למספר החדש", key="client_phone_send"):
-                        clean_new = new_phone.strip().replace("-", "").replace(" ", "")
-                        if not re.match(r"^05\d{8}$", clean_new):
-                            st.error("מספר טלפון לא תקין.")
-                        elif clean_new == profile.get("phone_number"):
-                            st.info("זה כבר המספר שלך.")
-                        elif _db().get_profile_by_phone(clean_new):
-                            st.error("המספר כבר רשום במערכת.")
-                        else:
-                            _send_otp(clean_new)
-                            st.session_state["_new_phone"] = clean_new
-                            st.rerun()
-                else:
-                    st.caption(f"שלחנו קוד לוואטסאפ של {pending_phone}")
-                    _otp_failed_notice()
-                    phone_code = st.text_input("קוד אימות", max_chars=6, key="client_phone_code")
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        if st.button("✅ אשר והחלף", key="client_phone_confirm", type="primary"):
-                            if _otp_valid(phone_code):
-                                ok, err = _db().update_profile_phone(profile["id"], pending_phone)
-                                if ok:
-                                    st.session_state.reg_phone = pending_phone
-                                    st.session_state.pop("_new_phone", None)
-                                    st.success("✅ מספר הטלפון עודכן!")
-                                    st.rerun()
-                                else:
-                                    st.error("המספר כבר רשום במערכת." if err == "phone_taken" else "שגיאה בעדכון.")
-                            else:
-                                st.error("קוד שגוי או שפג תוקפו.")
-                    with c2:
-                        if st.button("ביטול", key="client_phone_cancel"):
-                            st.session_state.pop("_new_phone", None)
-                            st.rerun()
-
-            # ── MY AGENT ───────────────────────────────────────────────────────
-            my_agent = _db().get_agent_by_id(profile.get("agent_id") or "")
-            if my_agent:
-                agent_phone = my_agent.get("phone_number") or ""
-                wa = ""
-                if agent_phone:
-                    intl = "972" + agent_phone[1:] if agent_phone.startswith("0") else agent_phone
-                    wa = (f' · <a href="https://wa.me/{intl}" target="_blank" '
-                          f'style="color:#16B364">💬 {agent_phone}</a>')
-                st.markdown(f"""
-<div class="profile-box">
-  <div style="font-weight:600;font-size:1rem;margin-bottom:6px">🧑‍💼 הסוכן שלך</div>
-  <div style="color:#374151;font-size:0.95rem">{my_agent.get('full_name','')}{wa}</div>
-  <div style="color:#6B7280;font-size:0.82rem;margin-top:4px">{_license_text(my_agent)} · BituachBot הוא העוזר הדיגיטלי שלו</div>
-</div>""", unsafe_allow_html=True)
             else:
-                with st.expander("🧑‍💼 הסוכן שלך — לא נבחר", expanded=True):
-                    agents = _all_agents()
-                    if agents:
-                        names = [a["full_name"] for a in agents]
-                        pick = st.selectbox("בחר את סוכן הביטוח שלך", ["—"] + names, key="client_pick_agent")
-                        if pick != "—" and st.button("💾 שמור סוכן", key="client_save_agent"):
-                            chosen = agents[names.index(pick)]
-                            if _db().assign_agent(profile["id"], chosen["id"]):
-                                _db().notify_agent_new_client(chosen["id"], profile["id"])
-                                st.success(f"✅ {pick} הוא הסוכן שלך")
-                                st.rerun()
+                st.caption("אין סוכנים במערכת כרגע.")
+
+    # ── MY ANNEXES ─────────────────────────────────────────────────────────────
+    policies = _db().get_user_policies(uid)
+    ready = [p for p in policies if p["has_data"]]
+    pending = [p for p in policies if not p["has_data"]]
+    if policies:
+        note = f"{len(ready)} מוכנים" + (f" · {len(pending)} בעיבוד" if pending else "")
+        st.markdown(ui.h2(f"הנספחים שלך ({len(policies)})", note), unsafe_allow_html=True)
+        st.markdown(ui.ledger(
+            [{"code": p["annex_code"], "name": p["annex_name"], "meta": p.get("company") or "", "ready": True} for p in ready]
+            + [{"code": p["annex_code"], "name": p["annex_name"], "meta": "הסוכן שלך משלים את הנספח — בקרוב", "ready": False}
+               for p in pending]), unsafe_allow_html=True)
+        st.caption(POLICY_CHANGE_NOTE)
+    else:
+        st.markdown(ui.h2("הנספחים שלך"), unsafe_allow_html=True)
+        st.info("עדיין אין נספחים. העלו כאן את קובץ הפוליסה, או שהסוכן שלכם יעשה זאת עבורכם.")
+
+    # ── UPLOAD ─────────────────────────────────────────────────────────────────
+    st.markdown(ui.h2("העלאת מסמכים"), unsafe_allow_html=True)
+    client_pdfs = st.file_uploader("פוליסה, נספחים או כל מסמך ביטוח — אפשר כמה קבצים ביחד", type=["pdf"],
+                                   accept_multiple_files=True, key="client_upload_pdf")
+    if client_pdfs and st.button(f"העלאת {len(client_pdfs)} מסמכים" if len(client_pdfs) > 1 else "העלאת המסמך",
+                                 type="primary", use_container_width=True, key="client_upload_btn",
+                                 icon=":material/upload:"):
+        msgs, tot = _ingest_files(uid, client_pdfs, "client")
+        if profile and profile.get("agent_id"):
+            _db().notify_agent_client_upload(profile["agent_id"], uid, tot["codes"], tot["library"])
+        _flash("success", "המסמך נשמר." if tot["count"] == 1 else f"{tot['count']} מסמכים נשמרו.")
+        for kind, m in msgs:
+            if kind == "warning":
+                kind, m = "info", m.replace("לא זוהו קודי נספחים במסמך.", "לא זוהו במסמך קודי נספחים — הסוכן שלך יעבור עליו.")
+            _flash(kind, m)
+        st.rerun()
+
+    with st.expander("המסמכים שלי", expanded=False):
+        _render_documents(uid, "client_docs")
+
+    bot_num = _bot_whatsapp_number()
+    if bot_num:
+        st.markdown(ui.h2("שאלות על הפוליסה"), unsafe_allow_html=True)
+        _whatsapp_card(bot_num)
+
+    # ── ACCOUNT ────────────────────────────────────────────────────────────────
+    if profile:
+        st.markdown(ui.h2("החשבון שלי"), unsafe_allow_html=True)
+        with st.expander("עדכון פרטים אישיים", expanded=False):
+            upd_name = st.text_input("שם מלא", value=profile.get("full_name", ""), key="upd_name")
+            upd_tz = st.text_input("תעודת זהות", value=profile.get("teudat_zehut", ""), key="upd_tz")
+            if st.button("שמירת פרטים", key="save_profile"):
+                if not upd_name.strip():
+                    st.error("שם מלא הוא שדה חובה.")
+                elif _db().update_profile(profile["id"], upd_name, upd_tz):
+                    st.session_state.reg_name = upd_name.strip()
+                    _flash("success", "הפרטים עודכנו.")
+                    st.rerun()
+                else:
+                    st.error("לא הצלחנו לעדכן את הפרטים. נסו שוב.")
+
+        with st.expander("החלפת מספר טלפון", expanded=bool(st.session_state.get("_new_phone"))):
+            pending_phone = st.session_state.get("_new_phone", "")
+            if not pending_phone:
+                new_phone = st.text_input("מספר חדש", placeholder="050-1234567", key="client_new_phone")
+                if st.button("שלח קוד אימות למספר החדש", key="client_phone_send"):
+                    clean_new = new_phone.strip().replace("-", "").replace(" ", "")
+                    if not re.match(r"^05\d{8}$", clean_new):
+                        st.error("מספר טלפון לא תקין.")
+                    elif clean_new == profile.get("phone_number"):
+                        st.info("זה כבר המספר שלך.")
+                    elif _db().get_profile_by_phone(clean_new):
+                        st.error("המספר כבר רשום במערכת.")
                     else:
-                        st.caption("אין סוכנים במערכת כרגע.")
+                        _send_otp(clean_new)
+                        st.session_state["_new_phone"] = clean_new
+                        st.rerun()
+            else:
+                st.caption(f"שלחנו קוד לוואטסאפ של {pending_phone}")
+                _otp_failed_notice()
+                phone_code = st.text_input("קוד אימות", max_chars=6, key="client_phone_code")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("אשר והחלף", key="client_phone_confirm", type="primary", use_container_width=True):
+                        if _otp_valid(phone_code):
+                            ok, err = _db().update_profile_phone(profile["id"], pending_phone)
+                            if ok:
+                                st.session_state.reg_phone = pending_phone
+                                st.session_state.pop("_new_phone", None)
+                                _flash("success", "מספר הטלפון עודכן.")
+                                st.rerun()
+                            else:
+                                st.error("המספר כבר רשום במערכת." if err == "phone_taken" else "לא הצלחנו לעדכן. נסו שוב.")
+                        else:
+                            st.error("קוד שגוי או שפג תוקפו.")
+                with c2:
+                    if st.button("ביטול", key="client_phone_cancel", use_container_width=True):
+                        st.session_state.pop("_new_phone", None)
+                        st.rerun()
 
-        policies = _db().get_user_policies(st.session_state.reg_user_id)
-        if policies:
-            ready = [p for p in policies if p["has_data"]]
-            pending = [p for p in policies if not p["has_data"]]
-            st.markdown(f'<div class="section-title">הנספחים שלך ({len(policies)})</div>', unsafe_allow_html=True)
-            st.info(POLICY_CHANGE_NOTE, icon="📌")
-            for p in ready:
-                st.markdown(f"""
-<div class="policy-card">
-  <div class="annex-code">נספח {p['annex_code']} ✅</div>
-  <div class="annex-name">{p['annex_name']}</div>
-  <div class="company-name">{p['company']}</div>
-</div>""", unsafe_allow_html=True)
-            for p in pending:
-                st.markdown(f"""
-<div class="policy-card" style="opacity:0.6;border-color:#E5E7EB;background:#F9FAFB">
-  <div class="annex-code" style="color:#9CA3AF">נספח {p['annex_code']} ⏳</div>
-  <div class="annex-name" style="color:#6B7280">{p['annex_name']}</div>
-  <div class="company-name">מידע בעיבוד — בקרוב</div>
-</div>""", unsafe_allow_html=True)
-        else:
-            st.info("לא נמצאו נספחים — העלה את קובץ הפוליסה כאן למטה, או שהסוכן שלך יעשה זאת עבורך.")
-
-        st.markdown('<div class="section-title">📤 העלאת מסמכים</div>', unsafe_allow_html=True)
-        st.caption("פוליסה, נספחים או כל מסמך ביטוח — נזהה את הנספחים אוטומטית.")
-        client_pdfs = st.file_uploader("בחר קובצי PDF (אפשר כמה ביחד)", type=["pdf"],
-                                       accept_multiple_files=True, key="client_upload_pdf")
-        if client_pdfs and st.button(f"⬆️ העלה {len(client_pdfs)} מסמכים" if len(client_pdfs) > 1 else "⬆️ העלה מסמך",
-                                     type="primary", use_container_width=True, key="client_upload_btn"):
-            uid = st.session_state.reg_user_id
-            msgs, tot = _ingest_files(uid, client_pdfs, "client")
-            if profile and profile.get("agent_id"):
-                _db().notify_agent_client_upload(profile["agent_id"], uid, tot["codes"], tot["library"])
-            _flash("success", "✅ המסמך נשמר." if tot["count"] == 1 else f"✅ {tot['count']} מסמכים נשמרו.")
-            for kind, m in msgs:
-                if kind == "warning":
-                    kind, m = "info", m.replace("לא זוהו קודי נספחים במסמך.", "לא זוהו במסמך קודי נספחים — הסוכן שלך יעבור עליו.")
-                _flash(kind, m)
-            st.rerun()
-
-        with st.expander("📁 המסמכים שלי", expanded=False):
-            _render_documents(st.session_state.reg_user_id, "client_docs")
-
-        bot_num = _bot_whatsapp_number()
-        if bot_num:
-            _whatsapp_card(bot_num)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        with st.expander("🗑️ מחיקת חשבון", expanded=False):
-            st.warning("פעולה זו תמחק את כל הנתונים שלך לצמיתות ואינה ניתנת לביטול.")
+        with st.expander("מחיקת חשבון", expanded=False):
+            st.warning("המחיקה סופית: הפרטים, הנספחים, המסמכים והשיחות נמחקים ולא ניתן לשחזר אותם.")
             confirm_delete = st.checkbox("אני מבין/ה ורוצה למחוק את החשבון שלי", key="confirm_delete")
-            if st.button("מחק חשבון לצמיתות", type="primary", key="delete_account_btn"):
+            if st.button("מחיקת החשבון לצמיתות", key="delete_account_btn"):
                 if not confirm_delete:
                     st.error("יש לסמן את תיבת האישור קודם.")
+                elif uid and _db().delete_profile(uid):
+                    _flash("success", "החשבון נמחק.")
+                    _client_logout()
                 else:
-                    user_id = st.session_state.get("reg_user_id", "")
-                    if user_id and _db().delete_profile(user_id):
-                        st.success("✅ החשבון נמחק בהצלחה.")
-                        for k, v in defaults.items():
-                            st.session_state[k] = v
-                        _forget_login()
-                        st.rerun()
-                    else:
-                        st.error("שגיאה במחיקת החשבון. נסה שוב או צור קשר עם הסוכן.")
-
-        if st.button("← יציאה"):
-            for k, v in defaults.items():
-                st.session_state[k] = v
-            _forget_login()
-            st.rerun()
+                    st.error("לא הצלחנו למחוק את החשבון. נסו שוב או פנו לסוכן.")
 
 
 def page_login_choose():
-    left, right = st.columns([1, 1])
+    left, right = _split()
     with left:
         _hero("agent")
     with right:
-        _logo("כניסה", "בחר את סוג המשתמש שלך")
-        st.markdown("<br>", unsafe_allow_html=True)
+        _logo("כניסה", "איך תרצו להיכנס?")
 
-        st.markdown("""
-<div style="background:#F0FDF4;border:2px solid #D1FAE5;border-radius:16px;padding:20px 24px;text-align:right;margin-bottom:16px">
-  <div style="font-size:1.6rem;margin-bottom:6px">👤</div>
-  <div style="font-weight:700;font-size:1rem;color:#111827;margin-bottom:4px">כניסה כלקוח</div>
-  <div style="font-size:0.88rem;color:#6B7280">אימות בקוד וואטסאפ</div>
-</div>
-""", unsafe_allow_html=True)
-        if st.button("כניסה כלקוח", type="primary", use_container_width=True):
+        st.markdown(ui.choice("לקוח", "אימות בקוד שנשלח לוואטסאפ."), unsafe_allow_html=True)
+        if st.button("כניסה כלקוח", type="primary", use_container_width=True, icon=":material/person:"):
             st.session_state.step = "login"
             st.rerun()
 
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        st.markdown("""
-<div style="background:#F8FAFF;border:2px solid #DBEAFE;border-radius:16px;padding:20px 24px;text-align:right;margin-bottom:16px">
-  <div style="font-size:1.6rem;margin-bottom:6px">🏢</div>
-  <div style="font-weight:700;font-size:1rem;color:#111827;margin-bottom:4px">כניסה כסוכן</div>
-  <div style="font-size:0.88rem;color:#6B7280">אימייל וסיסמה</div>
-</div>
-""", unsafe_allow_html=True)
-        if st.button("כניסה כסוכן", use_container_width=True):
+        st.markdown(ui.choice("סוכן ביטוח", "אימייל וסיסמה, או קוד בוואטסאפ."), unsafe_allow_html=True)
+        if st.button("כניסה כסוכן", use_container_width=True, icon=":material/badge:"):
             st.session_state.step = "agent_login"
             st.rerun()
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("← חזרה"):
+        if st.button("חזרה", type="tertiary", icon=":material/arrow_forward:"):
             st.session_state.step = "choose"
             st.rerun()
 
 
 def page_agent_login():
-    left, right = st.columns([1, 1])
+    left, right = _split()
     with left:
         _hero("agent")
     with right:
@@ -1295,7 +1045,6 @@ def page_agent_login():
         if login_method == "אימייל וסיסמה":
             email = st.text_input("אימייל", placeholder="israel@example.com")
             password = st.text_input("סיסמה", type="password", placeholder="הסיסמה שלך")
-            st.markdown("<br>", unsafe_allow_html=True)
             if st.button("כניסה", type="primary", use_container_width=True):
                 if not email.strip() or not password:
                     st.error("נא למלא אימייל וסיסמה.")
@@ -1310,7 +1059,6 @@ def page_agent_login():
                         st.error("האימייל או הסיסמה שגויים.")
         else:
             phone = st.text_input("טלפון נייד", placeholder="050-1234567")
-            st.markdown("<br>", unsafe_allow_html=True)
             if st.button("שלח קוד אימות", type="primary", use_container_width=True):
                 clean = phone.strip().replace("-", "").replace(" ", "")
                 if not re.match(r"^05\d{8}$", clean):
@@ -1327,10 +1075,9 @@ def page_agent_login():
                         st.session_state.step = "agent_verify_otp"
                         st.rerun()
 
-        st.markdown("<br>", unsafe_allow_html=True)
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("← חזרה"):
+            if st.button("חזרה", type="tertiary", icon=":material/arrow_forward:"):
                 st.session_state.step = "login_choose"
                 st.rerun()
         with col2:
@@ -1340,7 +1087,7 @@ def page_agent_login():
 
 
 def page_agent_verify_otp():
-    left, right = st.columns([1, 1])
+    left, right = _split()
     with left:
         _hero("agent")
     with right:
@@ -1349,7 +1096,6 @@ def page_agent_verify_otp():
         _otp_failed_notice(agent=True)
 
         code = st.text_input("קוד אימות", placeholder="123456", max_chars=6)
-        st.markdown("<br>", unsafe_allow_html=True)
 
         if st.button("כנס לפאנל הניהול", type="primary", use_container_width=True):
             if _otp_valid(code):
@@ -1364,22 +1110,21 @@ def page_agent_verify_otp():
             else:
                 st.error("קוד שגוי או שפג תוקפו.")
 
-        st.markdown("<br>", unsafe_allow_html=True)
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("← חזרה"):
+            if st.button("חזרה", type="tertiary", icon=":material/arrow_forward:"):
                 st.session_state.step = "agent_login"
                 st.rerun()
         with col2:
             if st.button("שלח קוד מחדש"):
                 _send_otp(st.session_state.reg_phone)
                 if st.session_state._otp_sent:
-                    _flash("success", "✅ קוד חדש נשלח לוואטסאפ.")
+                    _flash("success", "קוד חדש נשלח לוואטסאפ.")
                 st.rerun()
 
 
 def page_agent_reset_password():
-    left, right = st.columns([1, 1])
+    left, right = _split()
     with left:
         _hero("agent")
     with right:
@@ -1390,7 +1135,6 @@ def page_agent_reset_password():
         new_password = st.text_input("סיסמה חדשה", type="password", placeholder="לפחות 6 תווים")
         new_password2 = st.text_input("אימות סיסמה", type="password", placeholder="חזור על הסיסמה")
 
-        st.markdown("<br>", unsafe_allow_html=True)
         if st.button("עדכן סיסמה", type="primary", use_container_width=True):
             errors = []
             if not email.strip() or not full_name.strip():
@@ -1405,27 +1149,25 @@ def page_agent_reset_password():
             else:
                 ok = _db().reset_agent_password(email.strip(), full_name.strip(), new_password)
                 if ok:
-                    st.success("✅ הסיסמה עודכנה בהצלחה! כעת תוכל להתחבר.")
+                    st.success("הסיסמה עודכנה. אפשר להתחבר.")
                     st.session_state.step = "agent_login"
                     st.rerun()
                 else:
                     st.error("האימייל או השם לא תואמים לחשבון קיים.")
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("← חזרה לכניסה"):
+        if st.button("חזרה לכניסה", type="tertiary", icon=":material/arrow_forward:"):
             st.session_state.step = "agent_login"
             st.rerun()
 
 
 def page_login():
-    left, right = st.columns([1, 1])
+    left, right = _split()
     with left:
         _hero()
     with right:
         _logo("כניסה", "הזן את מספר הטלפון שלך לקבלת קוד אימות")
 
         phone = st.text_input("טלפון נייד", placeholder="050-1234567")
-        st.markdown("<br>", unsafe_allow_html=True)
 
         if st.button("שלח קוד אימות", type="primary", use_container_width=True):
             clean_phone = phone.strip().replace("-", "").replace(" ", "")
@@ -1443,8 +1185,7 @@ def page_login():
                     st.session_state.step = "verify_login"
                     st.rerun()
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("← חזרה"):
+        if st.button("חזרה", type="tertiary", icon=":material/arrow_forward:"):
             st.session_state.step = "form" if _agent else "choose"
             st.rerun()
 
@@ -1456,31 +1197,19 @@ def _clean_phone(raw: str) -> str:
     return (raw or "").strip().replace("-", "").replace(" ", "")
 
 
-def _admin_header(agent: dict):
-    st.markdown("""
-<style>
-.admin-header {
-  background: #1F2937; color: white; padding: 16px 24px; border-radius: 12px;
-  font-size: 1.1rem; font-weight: 700; margin-bottom: 24px; direction: rtl;
-  display: flex; align-items: center; gap: 10px;
-}
-.client-card {
-  background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px;
-  padding: 16px 20px; margin-bottom: 16px; direction: rtl;
-}
-</style>
-""", unsafe_allow_html=True)
-    lic = f' <span style="font-weight:400;font-size:0.85rem;opacity:0.8">· רישיון {agent["license_number"]}</span>' \
-        if agent.get("license_number") else ""
-    st.markdown(f'<div class="admin-header">🔐 BituachBot — ממשק ניהול | {agent.get("full_name", "מנהל")}{lic}</div>',
-                unsafe_allow_html=True)
-    if agent.get("agent_code"):
-        st.markdown('<div style="direction:rtl;font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:6px">'
-                    '🔗 קישור רישום לקוחות — שתף עם הלקוחות שלך</div>', unsafe_allow_html=True)
-        st.code(f"{BASE_URL}/?agent={agent['agent_code']}", language=None)
+def _admin_header(agent: dict, on_logout=None):
+    """Top bar + account dropdown for the agent workspace."""
+    name = agent.get("full_name", "מנהל")
+    menu = _topbar("פאנל סוכן" if agent.get("id") else "ניהול ראשי", name.split(" ")[0])
+    with menu:
+        lic = f'<span>{_license_text(agent)}</span>' if agent.get("id") else ""
+        st.markdown(f'<div class="bb-kv" style="flex-direction:column;gap:4px;margin-bottom:10px">'
+                    f'<span><b>{name}</b></span>{lic}</div>', unsafe_allow_html=True)
+        if st.button("יציאה", key="agent_logout_btn", icon=":material/logout:", use_container_width=True):
+            (on_logout or _agent_logout)()
 
 
-def _agent_phone_form(agent: dict, key: str, button_label: str = "💾 שמור טלפון") -> bool:
+def _agent_phone_form(agent: dict, key: str, button_label: str = "שמירת טלפון") -> bool:
     """Phone input + save. Returns True when saved."""
     new_phone = st.text_input("טלפון נייד (לקבלת התראות וואטסאפ)", placeholder="050-1234567",
                               value=agent.get("phone_number") or "", key=f"{key}_phone")
@@ -1493,14 +1222,14 @@ def _agent_phone_form(agent: dict, key: str, button_label: str = "💾 שמור 
             st.error("המספר כבר רשום לסוכן אחר.")
         elif _db().update_agent_phone(agent["id"], clean):
             st.session_state.logged_in_agent["phone_number"] = clean
-            st.success("✅ הטלפון נשמר!")
+            st.success("הטלפון נשמר.")
             return True
         else:
             st.error("שגיאה בעדכון")
     return False
 
 
-def _agent_license_form(agent: dict, key: str, button_label: str = "💾 שמור מספר רישיון") -> bool:
+def _agent_license_form(agent: dict, key: str, button_label: str = "שמירת מספר רישיון") -> bool:
     lic = st.text_input("מספר רישיון סוכן ביטוח (רשות שוק ההון)", value=agent.get("license_number") or "",
                         key=f"{key}_license", placeholder="מספר הרישיון")
     if st.button(button_label, key=f"{key}_license_save", type="primary"):
@@ -1509,7 +1238,7 @@ def _agent_license_form(agent: dict, key: str, button_label: str = "💾 שמו�
             st.error("מספר רישיון לא תקין (ספרות בלבד).")
         elif _db().update_agent_license(agent["id"], clean):
             st.session_state.logged_in_agent["license_number"] = clean
-            st.success("✅ מספר הרישיון נשמר!")
+            st.success("מספר הרישיון נשמר.")
             return True
         else:
             st.error("שגיאה בשמירה")
@@ -1517,44 +1246,59 @@ def _agent_license_form(agent: dict, key: str, button_label: str = "💾 שמו�
 
 
 def _agent_settings(agent: dict):
-    with st.expander("⚙️ הגדרות חשבון — טלפון, רישיון, אימייל, סיסמה", expanded=False):
-        st.markdown("**📱 טלפון** — לקבלת התראות על לקוחות חדשים ולכניסה בקוד וואטסאפ")
+    with st.expander("טלפון להתראות", expanded=False):
+        st.caption("לכאן נשלחות התראות וואטסאפ על לקוחות חדשים, ובמספר הזה אפשר להיכנס עם קוד.")
         if _agent_phone_form(agent, "settings"):
             st.rerun()
 
-        if _db().has_license_column():
-            st.markdown("---")
-            st.markdown("**🪪 רישיון סוכן ביטוח** — מוצג ללקוחות שלך ובהודעות הבוט")
+    if _db().has_license_column():
+        with st.expander("רישיון סוכן ביטוח", expanded=False):
+            st.caption("מוצג ללקוחות שלך ובהודעות הבוט.")
             if _agent_license_form(agent, "settings"):
                 st.rerun()
 
-        st.markdown("---")
-        st.markdown("**✉️ אימייל**")
+    with st.expander("אימייל", expanded=False):
         new_email = st.text_input("אימייל", placeholder="israel@example.com",
                                   value=agent.get("email") or "", key="agent_new_email")
-        if st.button("💾 שמור אימייל", key="save_agent_email"):
+        if st.button("שמירת אימייל", key="save_agent_email"):
             clean_email = new_email.strip()
             if not re.match(r"^[^@]+@[^@]+\.[^@]+$", clean_email):
-                st.error("כתובת אימייל לא תקינה")
+                st.error("כתובת אימייל לא תקינה.")
             elif _db().update_agent_email(agent["id"], clean_email):
                 st.session_state.logged_in_agent["email"] = clean_email.lower()
-                st.success("✅ האימייל עודכן!")
+                st.success("האימייל עודכן.")
             else:
-                st.error("שגיאה בעדכון")
+                st.error("לא הצלחנו לעדכן. נסו שוב.")
 
-        st.markdown("---")
-        st.markdown("**🔑 שינוי סיסמה**")
+    with st.expander("סיסמה", expanded=False):
         new_pwd = st.text_input("סיסמה חדשה", type="password", placeholder="לפחות 6 תווים", key="agent_new_pwd")
         new_pwd2 = st.text_input("אימות סיסמה", type="password", placeholder="חזור על הסיסמה", key="agent_new_pwd2")
-        if st.button("🔑 שנה סיסמה", key="save_agent_pwd"):
+        if st.button("החלפת סיסמה", key="save_agent_pwd"):
             if len(new_pwd) < 6:
-                st.error("סיסמה חייבת להכיל לפחות 6 תווים")
+                st.error("סיסמה חייבת להכיל לפחות 6 תווים.")
             elif new_pwd != new_pwd2:
-                st.error("הסיסמאות אינן תואמות")
+                st.error("הסיסמאות אינן תואמות.")
             elif _db().update_agent_password(agent["id"], new_pwd):
-                st.success("✅ הסיסמה עודכנה!")
+                st.success("הסיסמה עודכנה.")
             else:
-                st.error("שגיאה בעדכון")
+                st.error("לא הצלחנו לעדכן. נסו שוב.")
+
+    _whatsapp_debug()
+
+
+def _whatsapp_debug():
+    with st.expander("בדיקת חיבור וואטסאפ", expanded=False):
+        instance = _get_secret("GREEN_API_INSTANCE") or os.getenv("GREEN_API_INSTANCE", "")
+        token = _get_secret("GREEN_API_TOKEN") or os.getenv("GREEN_API_TOKEN", "")
+        st.caption(f"Instance: {(instance[:4] + '****') if instance else 'לא מוגדר'} · Token: {'מוגדר' if token else 'לא מוגדר'}")
+        test_phone = st.text_input("טלפון לבדיקה", placeholder="0501234567", key="debug_wa_phone")
+        if st.button("שליחת הודעת בדיקה", key="debug_wa_btn"):
+            if not test_phone.strip():
+                st.error("הזינו מספר טלפון.")
+            elif _db()._whatsapp(test_phone, "BituachBot — הודעת בדיקה"):
+                st.success("ההודעה נשלחה.")
+            else:
+                st.error(f"השליחה נכשלה. {_db().last_whatsapp_error}")
 
 
 def _agent_logout():
@@ -1581,69 +1325,24 @@ def page_agent_dashboard():
 
     # Phone is required: it is where new-client alerts are sent.
     if not agent.get("phone_number"):
-        st.warning("📱 כדי להמשיך, הוסף את מספר הטלפון שלך — אליו נשלח התראות וואטסאפ על לקוחות חדשים.")
-        if _agent_phone_form(agent, "gate", "💾 שמור והמשך"):
+        st.markdown(ui.h2("עוד צעד אחד"), unsafe_allow_html=True)
+        st.warning("כדי להמשיך, הוסף את מספר הטלפון שלך — אליו נשלח התראות וואטסאפ על לקוחות חדשים.")
+        if _agent_phone_form(agent, "gate", "שמור והמשך"):
             st.rerun()
-        if st.button("← יציאה", key="gate_logout"):
-            _agent_logout()
         return
 
     # License is required: BituachBot answers clients on behalf of a licensed agent.
     if not _db().has_license_column():
-        st.caption("⚙️ למנהל המערכת: הרץ את supabase/agent_license.sql ב-Supabase כדי לשמור מספרי רישיון.")
+        st.caption("למנהל המערכת: הרץ את supabase/agent_license.sql ב-Supabase כדי לשמור מספרי רישיון.")
     elif not agent.get("license_number"):
-        st.warning("🪪 BituachBot מיועד לסוכני ביטוח מורשים. כדי להמשיך, הזן את מספר רישיון סוכן הביטוח שלך — "
+        st.markdown(ui.h2("עוד צעד אחד"), unsafe_allow_html=True)
+        st.warning("BituachBot מיועד לסוכני ביטוח מורשים. כדי להמשיך, הזן את מספר רישיון סוכן הביטוח שלך — "
                    "הוא יוצג ללקוחות שלך, כי הבוט עונה להם בשמך.")
-        if _agent_license_form(agent, "gate", "💾 שמור והמשך"):
+        if _agent_license_form(agent, "gate", "שמור והמשך"):
             st.rerun()
-        if st.button("← יציאה", key="gate_logout_lic"):
-            _agent_logout()
         return
 
-    _agent_settings(agent)
     _render_admin_content(agent)
-
-    st.markdown("---")
-    with st.expander("🔧 בדיקת חיבור WhatsApp", expanded=False):
-        instance = _get_secret("GREEN_API_INSTANCE") or os.getenv("GREEN_API_INSTANCE", "")
-        token    = _get_secret("GREEN_API_TOKEN")    or os.getenv("GREEN_API_TOKEN", "")
-        inst_status = ("✅ " + instance[:4] + "****") if instance else "❌ לא מוגדר"
-        token_status = "✅ מוגדר" if token else "❌ לא מוגדר"
-        subdomain = instance[:4] if instance else "????"
-        built_url = f"https://{subdomain}.api.greenapi.com/waInstance{instance or '???'}/sendMessage/***"
-        st.markdown(f"""
-- **GREEN_API_INSTANCE**: `{inst_status}`
-- **GREEN_API_TOKEN**: `{token_status}`
-- **URL**: `{built_url}`
-""")
-        test_phone = st.text_input("טלפון לבדיקה", placeholder="0501234567", key="debug_wa_phone")
-        if st.button("📤 שלח הודעת בדיקה", key="debug_wa_btn"):
-            if not instance or not token:
-                st.error("חסרים credentials של Green API")
-            elif not test_phone.strip():
-                st.error("הזן מספר טלפון")
-            else:
-                digits = re.sub(r"\D", "", test_phone)
-                if digits.startswith("0"):
-                    digits = "972" + digits[1:]
-                url = f"https://{instance[:4]}.api.greenapi.com/waInstance{instance}/sendMessage/{token}"
-                st.code(f"POST {url.replace(token, '***')}\nchatId: {digits}@c.us")
-                try:
-                    r = requests.post(
-                        url,
-                        json={"chatId": f"{digits}@c.us", "message": "🧪 BituachBot test"},
-                        timeout=10,
-                    )
-                    st.write(f"**Status:** `{r.status_code}`")
-                    st.code(r.text)
-                    if r.status_code == 200:
-                        st.success("✅ נשלח בהצלחה!")
-                    else:
-                        st.error("❌ שגיאה בשליחה")
-                except Exception as e:
-                    st.error(f"Exception: {e}")
-    if st.button("← יציאה מממשק הניהול"):
-        _agent_logout()
 
 
 # The in-app bot gets the annex texts in its prompt. Coverage details are often deep in the
@@ -1655,43 +1354,45 @@ AUTO_YEAR = "זיהוי אוטומטי"
 
 
 def _annex_upload_form(key: str, code: str = ""):
-    """Upload one נספח PDF to the shared library. If `code` is given it is fixed.
+    """Upload נספח PDFs to the shared library. If `code` is given it is fixed.
     One document can cover several codes (e.g. plan 5986 + chapter 6650): extra codes can be typed,
     and the codes in the document's own header are detected and saved too."""
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        if code:
-            st.text_input("קוד נספח", value=code, key=f"{key}_code", disabled=True)
-            extra_in = st.text_input("קודים נוספים לאותו מסמך (רשות)", placeholder="5986", key=f"{key}_extra")
-            codes_text = f"{code} {extra_in}"
-        else:
-            codes_text = st.text_input("קוד/ים (ריק = זיהוי אוטומטי)", placeholder="6650, 5986", key=f"{key}_code")
-    with c2:
-        name_in = st.text_input("שם נספח (ריק = זיהוי אוטומטי)", placeholder="אבחנה מהירה", key=f"{key}_name")
-    current_year = datetime.now().year
-    year_choice = st.selectbox("שנת הנוסח", [AUTO_YEAR] + list(range(current_year, 1999, -1)), key=f"{key}_year")
+    if code:
+        pdfs = st.file_uploader(f"קובץ ה-PDF של נספח {code}", type=["pdf"], key=f"{key}_pdf")
+        pdfs = [pdfs] if pdfs else []
+    else:
+        pdfs = st.file_uploader("קובצי PDF של נספחים — אפשר כמה ביחד", type=["pdf"],
+                                accept_multiple_files=True, key=f"{key}_pdf") or []
+    b1, b2 = st.columns([2, 1], vertical_alignment="bottom")
+    with b2:
+        with st.popover("פרטים ידניים", use_container_width=True, icon=":material/tune:"):
+            st.caption("רשות. בלי פרטים — הקוד, השם והשנה מזוהים מהקובץ." +
+                       (" בהעלאת כמה קבצים הזיהוי תמיד אוטומטי." if not code else ""))
+            if code:
+                extra_in = st.text_input("קודים נוספים לאותו מסמך", placeholder="5986", key=f"{key}_extra")
+                codes_text = f"{code} {extra_in}"
+            else:
+                codes_text = st.text_input("קוד או קודים", placeholder="6650, 5986", key=f"{key}_code")
+            name_in = st.text_input("שם הנספח", placeholder="אבחון מהיר", key=f"{key}_name")
+            current_year = datetime.now().year
+            year_choice = st.selectbox("שנת הנוסח", [AUTO_YEAR] + list(range(current_year, 1999, -1)), key=f"{key}_year")
     typed = list(dict.fromkeys(re.findall(r"\d{4,6}", codes_text or "")))
+    with b1:
+        save = st.button("שמירה במאגר", type="primary", key=f"{key}_save", use_container_width=True,
+                         icon=":material/library_add:")
     if typed:
         versions = _db().get_annex_versions(typed[0])
         if versions:
-            st.caption(f"גרסאות קיימות במאגר ל-{typed[0]}: {' · '.join(str(y) for y in versions)}")
-    if code:
-        pdfs = st.file_uploader("PDF של הנספח", type=["pdf"], key=f"{key}_pdf")
-        pdfs = [pdfs] if pdfs else []
-    else:
-        pdfs = st.file_uploader("PDF של הנספחים (אפשר כמה ביחד)", type=["pdf"],
-                                accept_multiple_files=True, key=f"{key}_pdf") or []
-        if len(pdfs) > 1:
-            st.caption("כמה קבצים: הקוד, השם והשנה מזוהים אוטומטית מכל קובץ.")
-    if st.button("💾 שמור במאגר", type="primary", key=f"{key}_save"):
+            st.caption(f"גרסאות שכבר במאגר ל-{typed[0]}: {' · '.join(str(y) for y in versions)}")
+    if save:
         if not pdfs:
-            st.error("בחר קובץ PDF של הנספח.")
+            st.error("בחרו קובץ PDF של הנספח.")
             return
         many = len(pdfs) > 1
         bar = st.progress(0.0, text=f"מעבד 0/{len(pdfs)}...") if many else None
         for i, f in enumerate(pdfs[:MAX_FILES], 1):
             if many:
-                _save_annex_pdf(f.getvalue(), [], "", AUTO_YEAR, label=f"📄 {f.name} — ")
+                _save_annex_pdf(f.getvalue(), [], "", AUTO_YEAR, label=f"{f.name} — ")
                 bar.progress(i / len(pdfs), text=f"מעבד {i}/{len(pdfs)}...")
             else:
                 _save_annex_pdf(f.getvalue(), typed, name_in, year_choice)
@@ -1704,118 +1405,116 @@ def _save_annex_pdf(pdf_bytes: bytes, typed: list[str], name: str, year_choice, 
     info = _process_pdf(pdf_bytes)
     text = info.get("text", "")
     if not text.strip():
-        _flash("error", f"❌ {label}{info.get('error') or 'לא ניתן לקרוא טקסט מהקובץ.'}")
+        _flash("error", f"{label}{info.get('error') or 'לא ניתן לקרוא טקסט מהקובץ.'}")
         return False
     detected = info["codes"] if info["doc_type"] == "annex" else []
     codes = list(typed)
     if detected and (not typed or set(detected) & set(typed)):
         codes += detected
     elif detected:
-        _flash("warning", f"⚠️ {label}בכותרת הקובץ מופיעים קודים אחרים ({' · '.join(detected)}) — "
+        _flash("warning", f"{label}בכותרת הקובץ מופיעים קודים אחרים ({' · '.join(detected)}) — "
                           f"נשמר רק תחת {' · '.join(typed)}. ודא שזה הנספח הנכון.")
     for c in typed:
         codes += _extract_related_codes(text, c)
     codes = list(dict.fromkeys(codes))
     if not codes:
-        _flash("error", f"❌ {label}לא הצלחנו לזהות את קוד הנספח — העלה את הקובץ לבד והזן את הקוד ידנית." +
+        _flash("error", f"{label}לא הצלחנו לזהות את קוד הנספח — העלה את הקובץ לבד והזן את הקוד ידנית." +
                (f" ({info['error']})" if info.get("error") else ""))
         return False
     if info["doc_type"] == "policy":
-        _flash("warning", f"⚠️ {label}הקובץ נראה כמו מפרט פוליסה של לקוח ולא כמו חוברת תנאים של נספח — בדוק שהעלית את הקובץ הנכון.")
+        _flash("warning", f"{label}הקובץ נראה כמו מפרט פוליסה של לקוח ולא כמו חוברת תנאים של נספח — בדוק שהעלית את הקובץ הנכון.")
     year = year_choice if year_choice != AUTO_YEAR else (info.get("year") or datetime.now().year)
     saved, _ = _db().add_annex_document(
         codes, (name or "").strip() or info.get("name", ""), text, year, info.get("company", ""), overwrite=True
     )
     if not saved:
-        _flash("error", f"❌ {label}שגיאה בשמירת הנספח במאגר.")
+        _flash("error", f"{label}שגיאה בשמירת הנספח במאגר.")
         return False
-    _flash("success", f"✅ {label}נספח {' · '.join(saved)} ({year}) נשמר במאגר — כל הלקוחות עם הקודים האלה עודכנו.")
+    _flash("success", f"{label}נספח {' · '.join(saved)} ({year}) נשמר במאגר — כל הלקוחות עם הקודים האלה עודכנו.")
     return True
 
 
 def _render_client_card(client: dict, agent_id: str):
-    """Everything about one client: status, annexes, missing annexes, documents, upload, bot chat."""
+    """One client: status, annexes, missing annexes, upload, documents, conversations, bot chat."""
     client = _db().get_profile_by_id(client.get("id", "")) or client
     policies = _db().get_user_policies(client["id"])
     ready = [p for p in policies if p.get("has_data")]
     missing = [p for p in policies if not p.get("has_data")]
     docs = _db().list_client_documents(client["id"])
-    status = InsuranceClientDB.client_status(ready, missing, len(docs))
-    icon, label = STATUS_LABELS[status]
+    kind, label = STATUS_LABELS[InsuranceClientDB.client_status(ready, missing, len(docs))]
 
-    head_l, head_r = st.columns([5, 1])
-    with head_l:
-        st.markdown(f"## 👤 {client.get('full_name','')}")
-    with head_r:
-        if st.button("✖ סגור", key="close_client", use_container_width=True):
-            st.session_state.admin_client = None
-            st.rerun()
-    st.markdown(f"""
-<div class="client-card">
-  <div style="color:#374151;font-size:0.95rem;line-height:1.9">
-    📱 {client.get('phone_number','')} &nbsp;·&nbsp; 🆔 {client.get('teudat_zehut') or '—'}
-    &nbsp;·&nbsp; 📅 נרשם {(client.get('created_at') or '')[:10]}<br>
-    <strong>{icon} {label}</strong> &nbsp;·&nbsp; ✅ {len(ready)} נספחים במאגר
-    &nbsp;·&nbsp; ⏳ {len(missing)} חסרים &nbsp;·&nbsp; 📄 {len(docs)} מסמכים
-  </div>
-</div>""", unsafe_allow_html=True)
+    if st.button("חזרה לרשימת הלקוחות", key="close_client", type="tertiary", icon=":material/arrow_forward:"):
+        st.session_state.admin_client = None
+        st.rerun()
+    st.markdown(
+        f'<div class="bb-titlerow"><div class="bb-h1 bb-serif">{client.get("full_name", "")}</div>'
+        f'{ui.pill(kind, label)}</div>'
+        f'<div class="bb-kv" style="margin:6px 0 4px">'
+        f'<span>טלפון <b>{ui.ltr(client.get("phone_number", ""))}</b></span>'
+        f'<span>ת"ז <b>{ui.ltr(client.get("teudat_zehut") or "—")}</b></span>'
+        f'<span>נרשם <b>{ui.ltr((client.get("created_at") or "")[:10])}</b></span>'
+        f'<span><b>{len(docs)}</b> מסמכים</span></div>', unsafe_allow_html=True)
 
-    st.markdown("#### 📋 נספחים")
+    note = f"{len(ready)} במאגר" + (f" · {len(missing)} חסרים" if missing else "")
+    st.markdown(ui.h2(f"נספחים ({len(policies)})", note if policies else ""), unsafe_allow_html=True)
     if not policies:
-        st.info("עדיין אין נספחים ללקוח — העלה את הפוליסה שלו למטה.")
-    for p in ready:
-        company = f" · {p['company']}" if p.get("company") else ""
-        st.markdown(f"✅ **{p['annex_code']}** — {p.get('annex_name','')}{company}")
+        st.info("עדיין אין נספחים ללקוח. העלו את הפוליסה שלו כאן למטה.")
+    else:
+        st.markdown(ui.ledger(
+            [{"code": p["annex_code"], "name": p.get("annex_name") or "", "meta": p.get("company") or "",
+              "ready": True, "pill": "במאגר"} for p in ready]
+            + [{"code": p["annex_code"], "name": f"נספח {p['annex_code']}",
+                "meta": "חסר במאגר — הבוט עדיין לא יכול לענות עליו", "ready": False, "pill": "חסר"} for p in missing]),
+            unsafe_allow_html=True)
     for p in missing:
-        st.markdown(f"⏳ **{p['annex_code']}** — חסר במאגר, הבוט לא יכול לענות עליו עדיין")
-        with st.expander(f"📤 העלה את נספח {p['annex_code']}", expanded=False):
+        with st.expander(f"העלאת נספח {p['annex_code']}", expanded=False):
             _annex_upload_form(f"card_{client['id'][:8]}_{p['annex_code']}", p["annex_code"])
 
-    st.markdown(f"#### 📄 העלה פוליסה ל{client.get('full_name','לקוח')}")
-    st.caption("הקובץ נשמר בתיק של הלקוח הזה. הנספחים שבו יזוהו אוטומטית, ואם זה מסמך של נספח (חוברת תנאים) — הוא ייכנס גם למאגר.")
-    pdf_files = st.file_uploader("בחר קובצי PDF (אפשר כמה ביחד — פוליסה ונספחים)", type=["pdf"],
+    st.markdown(ui.h2("העלאת מסמכים לתיק הלקוח"), unsafe_allow_html=True)
+    pdf_files = st.file_uploader("פוליסה ונספחים — אפשר כמה קבצים ביחד. מסמך של נספח נכנס גם למאגר.", type=["pdf"],
                                  accept_multiple_files=True, key=f"admin_pdf_{client['id'][:8]}")
-    if pdf_files and st.button("⬆️ שמור בתיק הלקוח וזהה נספחים", type="primary", key="admin_pdf_save"):
+    if pdf_files and st.button("שמירה בתיק וזיהוי נספחים", type="primary", key="admin_pdf_save",
+                               icon=":material/upload:"):
         msgs, tot = _ingest_files(client["id"], pdf_files, "agent")
         if tot["codes"]:
             after = _db().get_user_policies(client["id"])
             now_missing = [p["annex_code"] for p in after if not p.get("has_data") and p["annex_code"] in tot["codes"]]
             if now_missing:
-                msgs.append(("warning", f"⏳ חסרים במאגר: {' · '.join(now_missing)} — העלה אותם כדי שהבוט יוכל לענות."))
+                msgs.append(("warning", f"חסרים במאגר: {' · '.join(now_missing)} — העלו אותם כדי שהבוט יוכל לענות."))
             if tot["linked"]:
                 ready_count = len([p for p in after if p.get("has_data")])
                 if ready_count:
                     _db().send_ready(client["phone_number"], client["full_name"], ready_count)
         if not tot["saved_all"]:
-            msgs.append(("warning", "⚠️ חלק מהקבצים לא נשמרו באחסון (בדוק את הגדרות Supabase Storage)."))
+            msgs.append(("warning", "חלק מהקבצים לא נשמרו באחסון (בדקו את הגדרות Supabase Storage)."))
         if tot["count"] > 1:
-            msgs.insert(0, ("success", f"✅ {tot['count']} מסמכים נשמרו בתיק הלקוח."))
+            msgs.insert(0, ("success", f"{tot['count']} מסמכים נשמרו בתיק הלקוח."))
         for m in msgs:
             _flash(*m)
         st.rerun()
 
-    with st.expander(f"📁 מסמכים ({len(docs)})", expanded=False):
-        st.caption("🔍 נתח שוב — מזהה מחדש את הנספחים במסמך. מסמך של נספח ייכנס למאגר.")
+    with st.expander(f"מסמכים ({len(docs)})", expanded=False):
+        st.caption("ניתוח מחדש מזהה שוב את הנספחים במסמך. מסמך של נספח נכנס למאגר.")
         _render_documents(client["id"], "agent_docs", reanalyze_by="agent")
 
     log = _db().get_bot_messages(client["id"])
     if log is not None:
-        with st.expander(f"🗂️ שיחות הלקוח עם הבוט בוואטסאפ ({len(log)})", expanded=False):
+        with st.expander(f"שיחות הלקוח עם הבוט בוואטסאפ ({len(log)})", expanded=False):
             if not log:
                 st.caption("עדיין אין שיחות שמורות.")
             for m in log:
-                who = "👤 הלקוח" if m.get("role") == "user" else "🤖 הבוט"
+                who = "הלקוח" if m.get("role") == "user" else "הבוט"
                 when = (m.get("created_at") or "")[:16].replace("T", " ")
-                st.markdown(f"**{who}** <span style='color:#9CA3AF;font-size:0.78rem'>{when}</span>",
+                st.markdown(f"**{who}** <span style='color:#8B94A7;font-size:.78rem'>{ui.ltr(when)}</span>",
                             unsafe_allow_html=True)
                 st.text(m.get("content") or "")
 
-    _render_client_chat(client)
+    with st.container():  # inside a container the chat input stays in the page flow instead of pinning to the bottom
+        _render_client_chat(client)
 
 
 def _render_client_chat(client: dict):
-    st.markdown("---")
-    st.markdown("### 💬 שאל את הבוט עבור הלקוח")
+    st.markdown(ui.h2("שאלה לבוט על הלקוח"), unsafe_allow_html=True)
 
     client_id = client.get("id", "")
     if st.session_state.get("agent_bot_client_id") != client_id:
@@ -1826,10 +1525,10 @@ def _render_client_chat(client: dict):
     ready_policies = [p for p in policies if p.get("has_data") and p.get("full_text")]
 
     if not ready_policies:
-        st.info("אין נספחים זמינים לבוט עבור לקוח זה — העלה PDF קודם.")
+        st.info("לבוט עדיין אין נספחים של הלקוח הזה. העלו קודם את הפוליסה או את הנספחים החסרים.")
     else:
         st.caption(
-            f"בוט מבוסס על {len(ready_policies)} נספחים: "
+            f"הבוט עונה לפי {len(ready_policies)} נספחים: "
             + " · ".join(p["annex_code"] for p in ready_policies)
         )
 
@@ -1874,7 +1573,8 @@ def _render_client_chat(client: dict):
                 for m in st.session_state.agent_bot_messages
             ]
             with st.chat_message("assistant"):
-                with st.spinner("חושב..."):
+                failed = False
+                with st.spinner("קורא את הנספחים..."):
                     try:
                         resp = _claude_create(
                             max_tokens=1024,
@@ -1884,29 +1584,29 @@ def _render_client_chat(client: dict):
                         answer = resp.content[0].text
                     except Exception as e:
                         print(f"[landing] agent bot chat: {e}")
-                        answer = f"❌ {_anthropic_error_he(e)}"
-                st.markdown(answer)
-            if not answer.startswith("❌"):
+                        answer, failed = _anthropic_error_he(e), True
+                (st.error if failed else st.markdown)(answer)
+            if not failed:
                 st.session_state.agent_bot_messages.append({"role": "assistant", "content": answer})
             else:
                 st.session_state.agent_bot_messages.pop()
 
         if st.session_state.agent_bot_messages:
-            if st.button("🗑️ נקה שיחה", key="clear_bot_chat"):
+            if st.button("ניקוי השיחה", key="clear_bot_chat", type="tertiary"):
                 st.session_state.agent_bot_messages = []
                 st.rerun()
 
 
 def _render_new_client_form(agent: dict):
-    with st.expander("➕ לקוח חדש — רשום לקוח בעצמך", expanded=False):
-        st.caption("ללקוח שמעדיף שתעשה את זה בשבילו. הלקוח יקבל הודעת וואטסאפ עם מספר הבוט.")
+    with st.expander("לקוח חדש", expanded=False):
+        st.caption("ללקוח שמעדיף שתרשמו אותו בעצמכם. הוא יקבל הודעת וואטסאפ עם מספר הבוט.")
         with st.form("new_client_form", clear_on_submit=False):
             name = st.text_input("שם מלא")
             phone = st.text_input("טלפון נייד", placeholder="050-1234567")
             tz = st.text_input("תעודת זהות (רשות)", max_chars=9)
             pdfs = st.file_uploader("פוליסה ונספחים PDF (רשות, אפשר כמה ביחד)", type=["pdf"], accept_multiple_files=True)
             send_welcome = st.checkbox("שלח ללקוח הודעת וואטסאפ עם מספר הבוט", value=True)
-            submitted = st.form_submit_button("✅ צור לקוח", type="primary")
+            submitted = st.form_submit_button("צור לקוח", type="primary", icon=":material/person_add:")
         if not submitted:
             return
         clean = _clean_phone(phone)
@@ -1939,7 +1639,7 @@ def _render_new_client_form(agent: dict):
         if not ok:
             st.error(user_id)
             return
-        _flash("success", f"✅ {name.strip()} נרשם")
+        _flash("success", f"{name.strip()} נרשם.")
         if pdfs:
             msgs, _ = _ingest_files(user_id, pdfs, "agent")
             for m in msgs:
@@ -1951,148 +1651,158 @@ def _render_new_client_form(agent: dict):
         st.rerun()
 
 
-def _render_library_section():
+def _open_client_from_jump():
+    """on_change of the client dropdown: open the picked client and reset the dropdown."""
+    cid = st.session_state.get("client_jump")
+    if cid:
+        st.session_state.admin_client = {"id": cid}
+        st.session_state.client_jump = None
+
+
+def _tab_clients(agent: dict, clients: list[dict]):
+    agent_id = agent.get("id", "")
+    if agent.get("agent_code"):
+        st.caption("הקישור האישי שלך להרשמת לקוחות. שולחים אותו ללקוח, והוא נרשם אצלך:")
+        st.code(f"{BASE_URL}/?agent={agent['agent_code']}", language=None)
+    if agent_id:
+        _render_new_client_form(agent)
+    if not clients:
+        st.info("עדיין אין לקוחות. שלחו ללקוחות את הקישור האישי שלמעלה, או רשמו לקוח ב\"לקוח חדש\".")
+    else:
+        kinds = {k: v[0] for k, v in STATUS_LABELS.items()}
+        counts = {kinds[k]: sum(1 for c in clients if c["status"] == k) for k in STATUS_LABELS}
+        st.markdown(ui.status_bar(counts, {v[0]: v[1] for v in STATUS_LABELS.values()}), unsafe_allow_html=True)
+
+        f1, f2 = st.columns([3, 2])
+        with f1:
+            by_id = {c["id"]: c for c in clients}
+            st.selectbox("מעבר ללקוח", list(by_id), index=None, key="client_jump", on_change=_open_client_from_jump,
+                         placeholder="חיפוש לפי שם או טלפון",
+                         format_func=lambda i: f"{by_id[i].get('full_name', '')} · {by_id[i].get('phone_number', '')}")
+        with f2:
+            status_filter = st.selectbox("סטטוס", ["all"] + list(STATUS_LABELS), key="clients_filter",
+                                         format_func=lambda k: "כל הסטטוסים" if k == "all" else STATUS_LABELS[k][1])
+        shown = clients if status_filter == "all" else [c for c in clients if c["status"] == status_filter]
+        if not shown:
+            st.caption("אין לקוחות בסטטוס הזה.")
+        for c in shown:
+            kind, label = STATUS_LABELS[c["status"]]
+            details = []
+            if c["ready_codes"]:
+                details.append(f"במאגר: {', '.join(c['ready_codes'])}")
+            if c["pending_codes"]:
+                details.append(f"חסרים: {', '.join(c['pending_codes'])}")
+            details.append(f"{c['doc_count']} מסמכים")
+            details.append(f"נרשם {(c.get('created_at') or '')[:10]}")
+            with st.container(key=f"row_{c['id']}"):
+                col_a, col_b = st.columns([6, 1], vertical_alignment="center")
+                with col_a:
+                    st.markdown(
+                        f'<div class="bb-top"><span class="bb-name">{c.get("full_name", "")}</span>'
+                        f'{ui.pill(kind, label)}<span class="bb-meta">{ui.ltr(c.get("phone_number", ""))}</span></div>'
+                        f'<div class="bb-meta">{" · ".join(details)}</div>', unsafe_allow_html=True)
+                with col_b:
+                    if st.button("פתיחה", key=f"open_{c['id']}", use_container_width=True):
+                        st.session_state.admin_client = c
+                        st.rerun()
+
+    # ── FIND / CLAIM BY PHONE ─────────────────────────────────────────────────
+    with st.expander("שיוך לקוח קיים לפי טלפון", expanded=bool(st.session_state.get("_found_client"))):
+        st.caption("לקוח שכבר רשום בלי סוכן — מחפשים לפי טלפון ומשייכים אותו אליכם.")
+        s1, s2 = st.columns([3, 1], vertical_alignment="bottom")
+        with s1:
+            phone_input = st.text_input("טלפון", placeholder="0501234567", key="find_phone")
+        with s2:
+            do_find = st.button("חיפוש", key="find_btn", use_container_width=True)
+        if do_find:
+            clean = _clean_phone(phone_input)
+            if not re.match(r"^05\d{8}$", clean):
+                st.error("מספר טלפון לא תקין.")
+                st.session_state.pop("_found_client", None)
+            else:
+                found = _db().get_profile_by_phone(clean)
+                if not found:
+                    st.error(f"לא נמצא לקוח עם המספר {clean}. אפשר לרשום אותו ב\"לקוח חדש\".")
+                    st.session_state.pop("_found_client", None)
+                else:
+                    st.session_state["_found_client"] = found
+        found = st.session_state.get("_found_client")
+        if found:
+            owner = found.get("agent_id")
+            if not agent_id or owner == agent_id:
+                st.session_state.admin_client = found
+                st.session_state.pop("_found_client", None)
+                st.rerun()
+            elif not owner:
+                st.info(f"{found.get('full_name', '')} ({found.get('phone_number', '')}) רשום בלי סוכן.")
+                if st.button("שייך אליי", key="claim_client", type="primary"):
+                    if _db().assign_agent(found["id"], agent_id):
+                        st.session_state.admin_client = found
+                        st.session_state.pop("_found_client", None)
+                        _flash("success", "הלקוח שויך אליך.")
+                        st.rerun()
+            else:
+                st.error("הלקוח משויך לסוכן אחר.")
+
+
+def _tab_missing(pending_codes: list[dict]):
+    st.caption("קודים שיש ללקוחות שלך ועדיין לא הועלו למאגר. עד שמעלים אותם, הבוט לא יכול לענות עליהם.")
+    if not pending_codes:
+        st.success("אין נספחים חסרים — כל הנספחים של הלקוחות שלך במאגר.")
+    for item in pending_codes:
+        names = item["clients"]
+        with st.expander(f"נספח {item['annex_code']} — {len(names)} לקוחות: "
+                         f"{', '.join(names[:4])}{' ...' if len(names) > 4 else ''}", expanded=False):
+            _annex_upload_form(f"pending_{item['annex_code']}", item["annex_code"])
+
+
+def _tab_library(lib: list[dict]):
     """Shared נספחים library: upload annexes without any client + see what is already in it."""
-    lib = _db().list_library()
-    with st.expander(f"📚 מאגר הנספחים ({len(lib)}) — העלאת נספחים בלי לקוח", expanded=False):
-        st.caption("נספח שנכנס למאגר מופיע אוטומטית כ-✅ אצל כל לקוח שיש לו את הקוד — גם אצל לקוחות שיירשמו בעתיד. "
-                   "אפשר להעלות כמה קבצים ביחד; הקוד, השם והשנה מזוהים מכל קובץ.")
+    st.caption("נספח שנכנס למאגר מופיע אוטומטית כמוכן אצל כל לקוח שיש לו את הקוד — גם אצל לקוחות שיירשמו בעתיד.")
+    with st.expander("העלאת נספחים למאגר (בלי לקוח)", expanded=not lib):
         _annex_upload_form("nispaj")
-        if lib:
-            st.markdown("---")
-            q = st.text_input("🔎 חיפוש במאגר (קוד, שם או חברה)", key="lib_search", placeholder="2210 / פיזיותרפיה / מגדל")
-            shown = [r for r in lib if not q.strip() or q.strip() in f"{r['annex_code']} {r['annex_name']} {r['company']}"]
-            for r in shown[:60]:
-                meta = " · ".join(str(x) for x in (r["company"], r["version_year"]) if x)
-                st.markdown(f"✅ **{r['annex_code']}** — {r['annex_name']}"
-                            + (f" <span style='color:#9CA3AF;font-size:0.8rem'>{meta}</span>" if meta else ""),
-                            unsafe_allow_html=True)
-            if len(shown) > 60:
-                st.caption(f"ועוד {len(shown) - 60} — חפש כדי לצמצם.")
+    if lib:
+        q = st.text_input("חיפוש במאגר", key="lib_search", placeholder="קוד, שם נספח או חברה — למשל 2210 / פיזיותרפיה / מגדל")
+        shown = [r for r in lib if not q.strip() or q.strip() in f"{r['annex_code']} {r['annex_name']} {r['company']}"]
+        if not shown:
+            st.caption("לא נמצא נספח מתאים במאגר.")
+        else:
+            st.markdown(ui.ledger([
+                {"code": r["annex_code"], "name": r["annex_name"], "ready": True, "pill": "במאגר",
+                 "meta": " · ".join(str(x) for x in (r["company"], r["version_year"]) if x)} for r in shown[:60]]),
+                unsafe_allow_html=True)
+        if len(shown) > 60:
+            st.caption(f"ועוד {len(shown) - 60} — חפשו כדי לצמצם.")
 
 
 def _render_admin_content(agent: dict):
     """Agent workspace. agent['id'] empty = main admin (sees all clients)."""
     agent_id = agent.get("id", "")
 
-    # ── OPEN CLIENT (shown first) ─────────────────────────────────────────────
+    # An open client replaces the lists (master → detail).
     if st.session_state.admin_client:
         _render_client_card(st.session_state.admin_client, agent_id)
-        st.markdown("---")
+        return
 
-    # ── NEW CLIENT ────────────────────────────────────────────────────────────
-    if agent_id:
-        _render_new_client_form(agent)
-
-    # ── ANNEX LIBRARY (upload without a client) ───────────────────────────────
-    _render_library_section()
-
-    # ── MY CLIENTS ────────────────────────────────────────────────────────────
     clients = _db().get_agent_clients(agent_id)
-    st.markdown(f"### 👥 הלקוחות שלי ({len(clients)})")
-    if not clients:
-        st.info("עדיין אין לקוחות. שתף את הקישור למעלה, או רשום לקוח ב'➕ לקוח חדש'.")
-    else:
-        counts = {k: sum(1 for c in clients if c["status"] == k) for k in STATUS_LABELS}
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("✅ מוכנים", counts["ready"])
-        m2.metric("🟡 חלקי", counts["partial"])
-        m3.metric("⏳ חסר נספח במאגר", counts["waiting_annex"])
-        m4.metric("❌ בלי פוליסה", counts["empty"])
-
-        f1, f2 = st.columns(2)
-        with f1:
-            status_filter = st.selectbox(
-                "סינון", ["הכל"] + [f"{v[0]} {v[1]}" for v in STATUS_LABELS.values()], key="clients_filter"
-            )
-        with f2:
-            search = st.text_input("חיפוש לפי שם או טלפון", key="clients_search", placeholder="שם / 05...")
-        shown = clients
-        if status_filter != "הכל":
-            wanted = [k for k, v in STATUS_LABELS.items() if f"{v[0]} {v[1]}" == status_filter][0]
-            shown = [c for c in shown if c["status"] == wanted]
-        if search.strip():
-            q = search.strip().replace("-", "")
-            shown = [c for c in shown if q in (c.get("full_name") or "") or q in (c.get("phone_number") or "")]
-
-        for c in shown:
-            icon, label = STATUS_LABELS[c["status"]]
-            col_a, col_b = st.columns([5, 1])
-            with col_a:
-                details = []
-                if c["ready_codes"]:
-                    details.append(f"✅ {', '.join(c['ready_codes'])}")
-                if c["pending_codes"]:
-                    details.append(f"⏳ חסרים: {', '.join(c['pending_codes'])}")
-                details.append(f"📄 {c['doc_count']} מסמכים")
-                st.markdown(
-                    f"{icon} **{c.get('full_name','')}** — {c.get('phone_number','')} "
-                    f"<span style='color:#9CA3AF;font-size:0.82rem'>(נרשם {(c.get('created_at') or '')[:10]})</span><br>"
-                    f"<span style='font-size:0.85rem;color:#4B5563'>{label} · {' · '.join(details)}</span>",
-                    unsafe_allow_html=True,
-                )
-            with col_b:
-                if st.button("פתח", key=f"open_{c['id']}", use_container_width=True):
-                    st.session_state.admin_client = c
-                    st.rerun()
-
-    # ── FIND / CLAIM BY PHONE ─────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### 🔎 חיפוש לקוח לפי טלפון")
-    s1, s2 = st.columns([3, 1])
-    with s1:
-        phone_input = st.text_input("טלפון", placeholder="0501234567", key="find_phone",
-                                    label_visibility="collapsed")
-    with s2:
-        do_find = st.button("חפש", key="find_btn", use_container_width=True)
-    if do_find:
-        clean = _clean_phone(phone_input)
-        if not re.match(r"^05\d{8}$", clean):
-            st.error("מספר טלפון לא תקין")
-            st.session_state.pop("_found_client", None)
-        else:
-            found = _db().get_profile_by_phone(clean)
-            if not found:
-                st.error(f"לקוח עם מספר {clean} לא נמצא — אפשר לרשום אותו ב'➕ לקוח חדש'.")
-                st.session_state.pop("_found_client", None)
-            else:
-                st.session_state["_found_client"] = found
-    found = st.session_state.get("_found_client")
-    if found:
-        owner = found.get("agent_id")
-        if not agent_id or owner == agent_id:
-            st.session_state.admin_client = found
-            st.session_state.pop("_found_client", None)
-            st.rerun()
-        elif not owner:
-            st.info(f"**{found.get('full_name','')}** ({found.get('phone_number','')}) רשום בלי סוכן.")
-            if st.button("🤝 שייך אליי", key="claim_client", type="primary"):
-                if _db().assign_agent(found["id"], agent_id):
-                    st.session_state.admin_client = found
-                    st.session_state.pop("_found_client", None)
-                    st.success("✅ הלקוח שויך אליך")
-                    st.rerun()
-        else:
-            st.error("הלקוח משויך לסוכן אחר.")
-
-    # ── MISSING ANNEXES ───────────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("### 📌 נספחים שחסרים במאגר")
-    st.caption("קודים שיש ללקוחות שלך אבל עדיין לא הועלו למאגר — עד שתעלה אותם, הבוט לא יכול לענות עליהם.")
     pending_codes = _db().get_pending_annex_codes(agent_id)
-    if not pending_codes:
-        st.success("✅ אין נספחים חסרים")
+    lib = _db().list_library()
+    tabs = {"clients": f"לקוחות ({len(clients)})", "missing": f"נספחים חסרים ({len(pending_codes)})",
+            "library": f"מאגר הנספחים ({len(lib)})"}
+    if agent_id:
+        tabs["settings"] = "הגדרות"
+    if st.session_state.get("agent_tab") not in tabs:
+        st.session_state["agent_tab"] = "clients"
+    tab = st.segmented_control("תצוגה", list(tabs), format_func=lambda k: tabs[k], key="agent_tab",
+                               label_visibility="collapsed") or "clients"
+    if tab == "clients":
+        _tab_clients(agent, clients)
+    elif tab == "missing":
+        _tab_missing(pending_codes)
+    elif tab == "library":
+        _tab_library(lib)
     else:
-        for item in pending_codes:
-            names = item["clients"]
-            with st.expander(
-                f"⏳ נספח {item['annex_code']} — {len(names)} לקוחות: "
-                f"{', '.join(names[:4])}{' ...' if len(names) > 4 else ''}",
-                expanded=False,
-            ):
-                _annex_upload_form(f"pending_{item['annex_code']}", item["annex_code"])
-
-
+        _agent_settings(agent)
 
 
 # ── PRIVACY POLICY PAGE ────────────────────────────────────────────────────────
@@ -2100,15 +1810,18 @@ def _render_admin_content(agent: dict):
 def page_privacy():
     st.markdown("""
 <style>
-.privacy-container { max-width: 760px; margin: 0 auto; direction: rtl; text-align: right; padding: 40px 24px; }
-.privacy-container h1 { font-size: 1.8rem; font-weight: 800; color: #111827; margin-bottom: 8px; }
-.privacy-container h2 { font-size: 1.1rem; font-weight: 700; color: #16B364; margin-top: 32px; margin-bottom: 10px; border-bottom: 2px solid #F0FDF4; padding-bottom: 6px; }
-.privacy-container p, .privacy-container li { font-size: 0.95rem; color: #374151; line-height: 1.85; }
+[data-testid="stMainBlockContainer"] { max-width: 760px !important; }
+.stApp .privacy-container.privacy-container.privacy-container h1, .stApp .privacy-container.privacy-container.privacy-container h1 * { font-family: var(--serif) !important; }
+.stApp .privacy-container h1 { font-size: 1.9rem; font-weight: 900; color: var(--ink); margin-bottom: 6px; }
+.stApp .privacy-container.privacy-container.privacy-container h2, .stApp .privacy-container.privacy-container.privacy-container h2 * { font-family: var(--serif) !important; }
+.stApp .privacy-container h2 { font-size: 1.15rem; font-weight: 700; color: var(--ink);
+  margin-top: 30px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.privacy-container p, .privacy-container li { font-size: .95rem; color: #2E3A52; line-height: 1.8; }
 .privacy-container ul { padding-right: 20px; }
-.privacy-date { font-size: 0.82rem; color: #9CA3AF; margin-bottom: 28px; }
+.privacy-date { font-size: .82rem; color: var(--ink-3); margin-bottom: 24px; }
 </style>
 <div class="privacy-container">
-<h1>🛡️ מדיניות פרטיות — BituachBot</h1>
+<h1>מדיניות פרטיות — BituachBot</h1>
 <div class="privacy-date">עדכון אחרון: אוקטובר 2026</div>
 
 <h2>1. מי אנחנו</h2>
@@ -2172,8 +1885,7 @@ def page_privacy():
 </div>
 """, unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("← חזרה"):
+    if st.button("חזרה", type="tertiary", icon=":material/arrow_forward:"):
         st.query_params.clear()
         st.rerun()
 
@@ -2183,56 +1895,53 @@ def page_privacy():
 def _render_agents_registry():
     """Main admin only: every agent with license number, to verify against the CMA registry."""
     agents = _db().get_all_agents()
-    with st.expander(f"🪪 סוכנים רשומים ({len(agents)}) — בדיקת רישיונות", expanded=False):
-        st.caption("BituachBot מיועד לסוכנים מורשים בלבד. בדוק כל מספר רישיון במאגר בעלי הרישיון של רשות שוק ההון.")
-        for a in agents:
-            lic = a.get("license_number") or "❗ חסר"
-            st.markdown(f"**{a.get('full_name','')}** · רישיון: `{lic}` · {a.get('phone_number') or ''} · "
-                        f"{a.get('email') or ''} · קוד `{a.get('agent_code','')}`")
+    with st.expander(f"סוכנים רשומים ({len(agents)}) — בדיקת רישיונות", expanded=False):
+        st.caption("BituachBot מיועד לסוכנים מורשים בלבד. בדקו כל מספר רישיון במאגר בעלי הרישיון של רשות שוק ההון.")
+        st.markdown(ui.ledger([
+            {"code": a.get("license_number") or "—", "name": a.get("full_name", ""), "ready": bool(a.get("license_number")),
+             "pill": "רישיון הוזן" if a.get("license_number") else "חסר רישיון",
+             "meta": " · ".join(x for x in (a.get("phone_number"), a.get("email"), a.get("agent_code")) if x)}
+            for a in agents]), unsafe_allow_html=True)
+
+
+def _admin_logout():
+    st.session_state.admin_authed = False
+    st.session_state.admin_client = None
+    st.query_params.clear()
+    st.rerun()
 
 
 def page_admin():
     """Legacy URL-based admin (?agent=CODE&admin=1). Kept for backward compat."""
     agent_for_admin = _agent
-    if not agent_for_admin:
-        correct_password = _get_secret("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", "")
-        if not correct_password:
-            st.error("❌ לא נמצא סוכן. השתמש בקישור ?agent=CODE&admin=1")
-            return
-        if not st.session_state.admin_authed:
-            pwd = st.text_input("סיסמה", type="password", placeholder="הכנס סיסמה")
-            if st.button("כניסה", type="primary"):
-                if pwd == correct_password:
+    if not st.session_state.admin_authed:
+        correct_password = (_agent.get("admin_password", "") if agent_for_admin
+                            else _get_secret("ADMIN_PASSWORD") or os.getenv("ADMIN_PASSWORD", ""))
+        left, right = _split()
+        with left:
+            _hero("agent")
+        with right:
+            _logo("כניסת מנהל", "פאנל הניהול של BituachBot")
+            if not agent_for_admin and not correct_password:
+                st.error("לא נמצא סוכן. השתמשו בקישור ?agent=CODE&admin=1")
+                return
+            pwd = st.text_input("סיסמה", type="password", placeholder="הסיסמה שלך")
+            if st.button("כניסה", type="primary", use_container_width=True):
+                ok = verify_password(pwd, correct_password) if agent_for_admin else (pwd == correct_password)
+                if ok:
+                    if agent_for_admin and not is_hashed(correct_password) and _agent.get("id"):
+                        _db().update_agent_password(_agent["id"], pwd)
                     st.session_state.admin_authed = True
                     st.rerun()
                 else:
-                    st.error("סיסמה שגויה")
-            return
-    elif not st.session_state.admin_authed:
-        correct_password = _agent.get("admin_password", "")
-        pwd = st.text_input("סיסמה", type="password", placeholder="הכנס סיסמה")
-        if st.button("כניסה", type="primary"):
-            if verify_password(pwd, correct_password):
-                if not is_hashed(correct_password) and _agent.get("id"):
-                    _db().update_agent_password(_agent["id"], pwd)
-                st.session_state.admin_authed = True
-                st.rerun()
-            else:
-                st.error("סיסמה שגויה")
+                    st.error("סיסמה שגויה.")
         return
 
     _admin_agent = agent_for_admin or {"full_name": "מנהל ראשי", "id": "", "agent_code": ""}
-    _admin_header(_admin_agent)
-    if not agent_for_admin:
+    _admin_header(_admin_agent, on_logout=_admin_logout)
+    if not agent_for_admin and not st.session_state.admin_client:
         _render_agents_registry()
     _render_admin_content(_admin_agent)
-
-    st.markdown("---")
-    if st.button("← יציאה מממשק הניהול"):
-        st.session_state.admin_authed = False
-        st.session_state.admin_client = None
-        st.query_params.clear()
-        st.rerun()
 
 
 @st.cache_resource(show_spinner=False)
